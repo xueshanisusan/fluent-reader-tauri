@@ -8,3 +8,7 @@ bin/*
 .DS_Store
 *.provisionprofile
 *.lock
+!src-tauri/Cargo.lock
+build.log
+src-tauri/target/
+src-tauri/gen/

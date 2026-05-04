@@ -1,3 +1,4 @@
+const path = require("path")
 const HtmlWebpackPlugin = require("html-webpack-plugin")
 const NodePolyfillPlugin = require("node-polyfill-webpack-plugin")
 const { GriffelPlugin } = require("@griffel/webpack-plugin")
@@ -58,11 +59,26 @@ module.exports = [
         performance: {
             hints: false,
         },
+        resolve: {
+            alias: {
+                "react/jsx-runtime": path.resolve(
+                    __dirname,
+                    "node_modules/react/jsx-runtime.js"
+                ),
+                "react/jsx-dev-runtime": path.resolve(
+                    __dirname,
+                    "node_modules/react/jsx-dev-runtime.js"
+                ),
+            },
+        },
         module: {
             rules: [
                 {
                     test: /\.(js|ts|tsx)$/,
-                    include: [/src/, /node_modules\/@fluentui/],
+                    include: [
+                        path.resolve(__dirname, "src"),
+                        /[\\/]node_modules[\\/]@fluentui[\\/]/,
+                    ],
                     use: {
                         loader: "@griffel/webpack-plugin/loader",
                     },
