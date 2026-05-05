@@ -39,9 +39,19 @@
     },
     addThemeUpdateListener: listenerNoop,
 
-    setLocaleSettings: noop,
-    getLocaleSettings: function () { return "default"; },
-    getCurrentLocale: function () { return navigator.language || "en-US"; },
+    setLocaleSettings: function (option) {
+      try { localStorage.setItem("spike-locale", option); } catch (e) {}
+    },
+    getLocaleSettings: function () {
+      try { return localStorage.getItem("spike-locale") || "default"; }
+      catch (e) { return "default"; }
+    },
+    getCurrentLocale: function () {
+      var stored = null;
+      try { stored = localStorage.getItem("spike-locale"); } catch (e) {}
+      if (stored && stored !== "default") return stored;
+      return navigator.language || "en-US";
+    },
 
     getFontSize: function () { return 16; },
     setFontSize: noop,
