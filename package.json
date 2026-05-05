@@ -19,7 +19,8 @@
   "author": "Haoyuan Liu",
   "license": "BSD-3-Clause",
   "sideEffects": [
-    "*.css"
+    "*.css",
+    "./src/spike-mock.js"
   ],
   "repository": "github:yang991178/fluent-reader",
   "devDependencies": {

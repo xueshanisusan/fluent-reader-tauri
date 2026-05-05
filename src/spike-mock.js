@@ -2,6 +2,10 @@
 // Real Electron preload runs FIRST and populates these objects; this script
 // detects that and bails out. In Tauri (no preload), this fills in stub values
 // so the React app can boot to render — no real persistence, no real IPC.
+//
+// IIFE is intentional: it must run at module-evaluation time (before reducer.ts
+// imports trigger `createStore` → reducer init → window.settings.* calls).
+// Listed in package.json's `sideEffects` so webpack does NOT tree-shake it.
 
 (function () {
   if (typeof window.settings === "object" && window.settings !== null) {
