@@ -30,6 +30,7 @@
     "@fluentui/react-shared-contexts": "^9.26.2",
     "@griffel/react": "^1.6.1",
     "@griffel/webpack-plugin": "^4.0.1",
+    "@tauri-apps/api": "^2.11.0",
     "@types/lovefield": "^2.1.3",
     "@types/nedb": "^1.8.9",
     "@types/react": "^16.9.35",
