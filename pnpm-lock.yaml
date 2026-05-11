@@ -29,6 +29,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.11.0
         version: 2.11.0
+      '@tauri-apps/plugin-store':
+        specifier: ^2.4.3
+        version: 2.4.3
       '@types/lovefield':
         specifier: ^2.1.3
         version: 2.1.7
@@ -1297,6 +1300,9 @@ packages:
 
   '@tauri-apps/api@2.11.0':
     resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
+
+  '@tauri-apps/plugin-store@2.4.3':
+    resolution: {integrity: sha512-9LWPj9yMphRi9czEtUv87XHbl1b6xgd9EXpPrUnq6nG7+nbtoF84d4Kwz9xhAv/Hf30sr58pq7EOlyI936y8qw==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -5473,6 +5479,10 @@ snapshots:
       defer-to-connect: 2.0.1
 
   '@tauri-apps/api@2.11.0': {}
+
+  '@tauri-apps/plugin-store@2.4.3':
+    dependencies:
+      '@tauri-apps/api': 2.11.0
 
   '@tybys/wasm-util@0.10.1':
     dependencies:
