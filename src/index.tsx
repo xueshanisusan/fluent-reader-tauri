@@ -28,3 +28,9 @@ ReactDOM.render(
     </Provider>,
     document.getElementById("app")
 )
+
+import { Demo as ArticleViewDemo } from "./components/article/Demo"
+const demoMount = document.createElement("div")
+demoMount.id = "article-demo-portal"
+document.body.appendChild(demoMount)
+ReactDOM.render(<ArticleViewDemo />, demoMount)

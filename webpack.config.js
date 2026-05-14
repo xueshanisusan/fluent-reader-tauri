@@ -97,6 +97,11 @@ module.exports = [
                     test: /\.css$/,
                     use: [MiniCssExtractPlugin.loader, "css-loader"],
                 },
+                {
+                    test: /fixture\.html$/,
+                    include: path.resolve(__dirname, "src"),
+                    type: "asset/source",
+                },
             ],
         },
         output: {

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture article</title>
+  <style>
+    /* Article's own styles. Host's injected :root vars should override these. */
+    :root {
+      --bg: white;
+      --fg: #222;
+      --link: #06c;
+      --font-size: 16px;
+    }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-size: var(--font-size);
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px;
+      line-height: 1.6;
+    }
+    a { color: var(--link); }
+    blockquote {
+      border-left: 3px solid var(--link);
+      padding-left: 12px;
+      color: #666;
+      margin-left: 0;
+    }
+    pre { background: #f4f4f4; padding: 12px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Sample RSS article fixture</h1>
+
+  <p><em>This fixture mirrors the kind of HTML a sanitized RSS feed delivers,
+  plus a handful of hostile elements to verify isolation behavior.</em></p>
+
+  <h2>Normal content</h2>
+  <p>This is a paragraph with <a href="https://example.com">an external link</a>.
+  Clicking it should be interceptable by the host so the host can route it via
+  <code>openExternal</code> instead of navigating in-place.</p>
+
+  <blockquote>A blockquote, to verify the host's injected theme CSS reaches
+  cascaded child elements.</blockquote>
+
+  <pre><code>function hello() {
+  return "code block";
+}</code></pre>
+
+  <h2>Image</h2>
+  <p><img src="https://placehold.co/400x200/png" alt="placeholder" /></p>
+  <p><small>(External image — should it load? Depends on harness.)</small></p>
+
+  <h2>Tracking pixel (1x1 invisible image)</h2>
+  <p><img src="https://www.google-analytics.com/collect?v=1&t=event&tid=UA-FAKE&ec=spike" width="1" height="1" alt="" /></p>
+
+  <h2>Hostile content (must be defused)</h2>
+
+  <p>Inline script that, if executed, sets <code>window.spikeHostile = "EXECUTED"</code>:</p>
+  <script>window.spikeHostile = "EXECUTED";</script>
+
+  <p>An onclick handler that tries to alter the parent:</p>
+  <button onclick="try { parent.document.title = 'PWNED'; } catch (e) { document.getElementById('hostile-onclick-result').textContent = 'BLOCKED: ' + e.message; }">
+    Try to change parent title
+  </button>
+  <div id="hostile-onclick-result" style="font-family: monospace; color: #c00;"></div>
+
+  <p>Nested iframe:</p>
+  <iframe src="https://example.com" sandbox="allow-same-origin" width="320" height="80" style="border: 1px solid #ccc;"></iframe>
+
+  <h2>Long content (scroll test)</h2>
+  <div id="filler"></div>
+  <script>
+    // This script also tries to execute. Adds 50 paragraphs.
+    var filler = document.getElementById('filler');
+    if (filler) {
+      for (var i = 0; i < 50; i++) {
+        var p = document.createElement('p');
+        p.textContent = 'Filler paragraph ' + (i + 1) + '. Lorem ipsum dolor sit amet, consectetur adipiscing elit. ' +
+                        'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
+        filler.appendChild(p);
+      }
+      window.spikeFillerInjected = true;
+    }
+  </script>
+
+  <h2>End</h2>
+  <p>If you can read this, scroll worked.</p>
+
+  <!-- Probe: read by harness via postMessage to confirm DOM access -->
+  <script>
+    try {
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          spikeProbe: true,
+          scriptExecuted: typeof window.spikeHostile === 'string',
+          fillerInjected: !!window.spikeFillerInjected,
+          location: location.href
+        }, '*');
+      }
+    } catch (e) {
+      // ignore
+    }
+  </script>
+</body>
+</html>
