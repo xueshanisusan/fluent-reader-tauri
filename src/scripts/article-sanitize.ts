@@ -1,5 +1,8 @@
 import sanitizeHtml from "sanitize-html"
 
+// SECURITY: do NOT add "style" — sanitize-html validates inline style="..." against
+// ALLOWED_STYLES below but does NOT parse <style> tag *contents*, so allowing the tag
+// would re-open CSS-based exfil / overlay attacks (@import, position:fixed, etc.).
 const ALLOWED_TAGS = [
     "p", "br", "hr",
     "h1", "h2", "h3", "h4", "h5", "h6",

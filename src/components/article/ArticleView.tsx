@@ -38,18 +38,22 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
             }
             switch (e.data.t) {
                 case "link": {
-                    let proto: string
+                    // Belt: literal scheme+`//` prefix rejects `https:foo:` protocol-confusion forms
+                    // that `new URL(...).protocol === "https:"` would otherwise accept.
+                    // Suspenders: Tauri capability `shell:allow-open` glob `https://**` rejects the
+                    // same form at the ACL layer if frontend is XSS'd.
+                    const url = e.data.url
+                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                        console.warn("[ArticleView] non-http(s) link blocked", url)
+                        return
+                    }
                     try {
-                        proto = new URL(e.data.url).protocol
+                        new URL(url)
                     } catch {
-                        console.warn("[ArticleView] bad link url", e.data.url)
+                        console.warn("[ArticleView] bad link url", url)
                         return
                     }
-                    if (proto !== "http:" && proto !== "https:") {
-                        console.warn("[ArticleView] non-http(s) link blocked", e.data.url)
-                        return
-                    }
-                    onLink?.(e.data.url)
+                    onLink?.(url)
                     break
                 }
                 case "key":
