@@ -23,6 +23,8 @@ export interface Source {
   hidden: boolean;
   groupId: number | null;
   position: number;
+  etag: string | null;
+  lastModified: string | null;
 }
 
 export interface NewSource {

@@ -6,6 +6,7 @@ import {
     sources as sourcesApi,
     type Item,
 } from "../../scripts/db-bridge"
+import { refreshAll, isRefreshSuccess, type RefreshResult } from "../../scripts/feeds"
 
 // SPIKE ONLY: delete this seed path (and the spike://demo rows) before v2 ships.
 // Sources/items with url prefix `spike://` are demo-only and never come from real feeds.
@@ -114,6 +115,48 @@ const seedErrorStyle: React.CSSProperties = {
     color: "#a00",
     fontSize: 12,
 }
+const refreshStatusStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: "#bbb",
+    marginLeft: 8,
+    maxWidth: 360,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+}
+
+function formatRefreshSummary(results: RefreshResult[]): string {
+    if (results.length === 0) return "no feeds to refresh"
+    let updated = 0
+    let notModified = 0
+    let inserted = 0
+    let failed = 0
+    let firstError: string | null = null
+    for (const r of results) {
+        if (isRefreshSuccess(r)) {
+            if (r.outcome.kind === "updated") {
+                updated += 1
+                inserted += r.outcome.inserted
+            } else {
+                notModified += 1
+            }
+        } else {
+            failed += 1
+            if (!firstError) {
+                firstError = `${r.error.kind}: ${r.error.message}`
+            }
+        }
+    }
+    const parts = [
+        `${results.length} feed${results.length === 1 ? "" : "s"}`,
+        `${inserted} new`,
+    ]
+    if (notModified) parts.push(`${notModified} 304`)
+    if (failed) parts.push(`${failed} failed`)
+    let out = parts.join(" · ")
+    if (firstError) out += ` — ${firstError}`
+    return out
+}
 
 async function ensureDemoSource(): Promise<number> {
     const existing = await sourcesApi.list()
@@ -153,6 +196,8 @@ export function Demo(): React.ReactElement {
     const [listError, setListError] = React.useState<string | null>(null)
     const [seedError, setSeedError] = React.useState<string | null>(null)
     const [seedInFlight, setSeedInFlight] = React.useState(false)
+    const [refreshInFlight, setRefreshInFlight] = React.useState(false)
+    const [refreshStatus, setRefreshStatus] = React.useState<string | null>(null)
     const [remount, setRemount] = React.useState(0)
 
     const cancelledRef = React.useRef(false)
@@ -210,6 +255,28 @@ export function Demo(): React.ReactElement {
         }
     }, [seedInFlight, loadItems])
 
+    const onRefresh = React.useCallback(async () => {
+        if (refreshInFlight) return
+        setRefreshInFlight(true)
+        setRefreshStatus("refreshing…")
+        try {
+            // Skip demo spike:// sources — they aren't real feeds.
+            const sources = await sourcesApi.list()
+            const sids = sources
+                .filter(s => !s.url.startsWith("spike://"))
+                .map(s => s.sid)
+            const results = await refreshAll(sids)
+            if (cancelledRef.current) return
+            setRefreshStatus(formatRefreshSummary(results))
+            await loadItems()
+        } catch (e) {
+            if (cancelledRef.current) return
+            setRefreshStatus("refresh failed: " + String((e as Error)?.message ?? e))
+        } finally {
+            if (!cancelledRef.current) setRefreshInFlight(false)
+        }
+    }, [refreshInFlight, loadItems])
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[Demo] openExternal failed", err)
@@ -242,7 +309,16 @@ export function Demo(): React.ReactElement {
                 <span style={{ flex: 1 }}>
                     v2 demo{items ? ` — ${items.length} items` : ""}
                     {selectedItem ? ` — ${selectedItem.title}` : ""}
+                    {refreshStatus && (
+                        <span style={refreshStatusStyle}>{refreshStatus}</span>
+                    )}
                 </span>
+                <button
+                    style={refreshInFlight ? headerBtnDisabledStyle : headerBtnStyle}
+                    disabled={refreshInFlight}
+                    onClick={onRefresh}>
+                    {refreshInFlight ? "Refreshing…" : "Refresh feeds"}
+                </button>
                 <button
                     style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
                     disabled={!selectedItem}

@@ -74,11 +74,22 @@ pub mod sources {
     pub async fn list(pool: &SqlitePool) -> sqlx::Result<Vec<Source>> {
         sqlx::query_as(
             "SELECT sid, url, icon_url, name, open_target, last_fetched_ms, service_ref, \
-                    fetch_frequency, text_dir, hidden, group_id, position \
+                    fetch_frequency, text_dir, hidden, group_id, position, etag, last_modified \
              FROM sources \
              ORDER BY group_id IS NULL, group_id, position, sid",
         )
         .fetch_all(pool)
+        .await
+    }
+
+    pub async fn get(pool: &SqlitePool, sid: i64) -> sqlx::Result<Source> {
+        sqlx::query_as(
+            "SELECT sid, url, icon_url, name, open_target, last_fetched_ms, service_ref, \
+                    fetch_frequency, text_dir, hidden, group_id, position, etag, last_modified \
+             FROM sources WHERE sid = ?",
+        )
+        .bind(sid)
+        .fetch_one(pool)
         .await
     }
 
@@ -94,7 +105,7 @@ pub mod sources {
                 (url, name, icon_url, group_id, open_target, fetch_frequency, text_dir, position) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
              RETURNING sid, url, icon_url, name, open_target, last_fetched_ms, service_ref, \
-                       fetch_frequency, text_dir, hidden, group_id, position",
+                       fetch_frequency, text_dir, hidden, group_id, position, etag, last_modified",
         )
         .bind(&input.url)
         .bind(&input.name)
@@ -182,6 +193,34 @@ pub mod sources {
         sqlx::query("DELETE FROM sources WHERE sid = ?")
             .bind(sid)
             .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_cache_headers_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> sqlx::Result<()> {
+        sqlx::query("UPDATE sources SET etag = ?, last_modified = ? WHERE sid = ?")
+            .bind(etag)
+            .bind(last_modified)
+            .bind(sid)
+            .execute(&mut *tx)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_last_fetched_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+        last_fetched_ms: i64,
+    ) -> sqlx::Result<()> {
+        sqlx::query("UPDATE sources SET last_fetched_ms = ? WHERE sid = ?")
+            .bind(last_fetched_ms)
+            .bind(sid)
+            .execute(&mut *tx)
             .await?;
         Ok(())
     }
@@ -351,5 +390,38 @@ pub mod items {
         )
         .fetch_all(pool)
         .await
+    }
+
+    pub async fn insert_dedup_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        items: &[NewItem],
+    ) -> sqlx::Result<(u64, u64)> {
+        if items.is_empty() {
+            return Ok((0, 0));
+        }
+        let fetched = now_ms();
+        let mut inserted = 0u64;
+        for it in items {
+            let res = sqlx::query(
+                "INSERT INTO items \
+                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(source_id, link) DO NOTHING",
+            )
+            .bind(it.source_id)
+            .bind(&it.title)
+            .bind(&it.link)
+            .bind(it.date_ms)
+            .bind(fetched)
+            .bind(&it.thumb)
+            .bind(it.content.clone().unwrap_or_default())
+            .bind(it.snippet.clone().unwrap_or_default())
+            .bind(&it.creator)
+            .execute(&mut *tx)
+            .await?;
+            inserted += res.rows_affected();
+        }
+        let skipped = items.len() as u64 - inserted;
+        Ok((inserted, skipped))
     }
 }
