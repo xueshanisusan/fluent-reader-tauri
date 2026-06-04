@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod feeds;
 pub mod models;
 pub mod net;
 pub mod repo;
@@ -46,6 +47,7 @@ pub fn run() {
             commands::items_set_starred,
             commands::items_unread_counts,
             net::net_fetch,
+            feeds::sources_ingest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

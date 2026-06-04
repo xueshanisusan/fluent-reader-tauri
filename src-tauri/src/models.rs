@@ -25,6 +25,8 @@ pub struct Source {
     pub hidden: bool,
     pub group_id: Option<i64>,
     pub position: i64,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -119,4 +121,27 @@ pub struct RulePatch {
 pub struct UnreadCount {
     pub source_id: i64,
     pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum IngestionOutcome {
+    NotModified {
+        #[serde(rename = "finalUrl")]
+        final_url: String,
+    },
+    Updated {
+        inserted: u64,
+        skipped: u64,
+        #[serde(rename = "finalUrl")]
+        final_url: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum IngestionError {
+    Network { message: String },
+    Parse { message: String },
+    Db { message: String },
 }

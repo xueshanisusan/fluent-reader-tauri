@@ -1,0 +1,18 @@
+// Typed wrapper around the sources_ingest tauri command (src-tauri/src/feeds.rs).
+// Success/error are both serde-tagged enums; switch on .kind to discriminate.
+
+import { invoke } from "@tauri-apps/api/core";
+
+export type IngestionOutcome =
+  | { kind: "notModified"; finalUrl: string }
+  | { kind: "updated"; inserted: number; skipped: number; finalUrl: string };
+
+export type IngestionError =
+  | { kind: "network"; message: string }
+  | { kind: "parse"; message: string }
+  | { kind: "db"; message: string };
+
+export const feeds = {
+  ingest: (sid: number) =>
+    invoke<IngestionOutcome>("sources_ingest", { sid }),
+};
