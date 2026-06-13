@@ -485,6 +485,28 @@ export function App(): React.ReactElement {
         [deleteInFlight, loadItems]
     )
 
+    const onSelectNeighbor = React.useCallback(
+        (offset: number) => {
+            if (!items || items.length === 0) return
+            const idx = selectedItem
+                ? items.findIndex(i => i.iid === selectedItem.iid)
+                : -1
+            const nextIdx = Math.max(
+                0,
+                Math.min(items.length - 1, (idx < 0 ? 0 : idx) + offset)
+            )
+            if (nextIdx !== idx) setSelectedItem(items[nextIdx])
+        },
+        [items, selectedItem]
+    )
+
+    const onOpenSelectedLink = React.useCallback(() => {
+        if (!selectedItem?.link) return
+        openExternal(selectedItem.link).catch(err =>
+            console.error("[App] openExternal failed", err)
+        )
+    }, [selectedItem])
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
@@ -492,7 +514,60 @@ export function App(): React.ReactElement {
         })
     }, [])
 
-    const onArticleKey = React.useCallback(() => {}, [])
+    const handleShortcut = React.useCallback(
+        (key: string): boolean => {
+            switch (key) {
+                case "j":
+                    onSelectNeighbor(1)
+                    return true
+                case "k":
+                    onSelectNeighbor(-1)
+                    return true
+                case "m":
+                    void onToggleRead()
+                    return true
+                case "s":
+                    void onToggleStar()
+                    return true
+                case "r":
+                    void onRefresh()
+                    return true
+                case "o":
+                    onOpenSelectedLink()
+                    return true
+            }
+            return false
+        },
+        [
+            onSelectNeighbor,
+            onToggleRead,
+            onToggleStar,
+            onRefresh,
+            onOpenSelectedLink,
+        ]
+    )
+
+    const onArticleKey = React.useCallback(
+        (key: string) => {
+            handleShortcut(key)
+        },
+        [handleShortcut]
+    )
+
+    React.useEffect(() => {
+        function onKey(e: KeyboardEvent): void {
+            if (e.ctrlKey || e.metaKey || e.altKey) return
+            // Skip while user is typing in an input/textarea.
+            const tgt = e.target as HTMLElement | null
+            if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return
+            // While the Sources modal is open, leave shortcuts inert so Esc/Tab
+            // behave normally for the modal's own buttons.
+            if (sourcesPanel) return
+            if (handleShortcut(e.key)) e.preventDefault()
+        }
+        window.addEventListener("keydown", onKey)
+        return () => window.removeEventListener("keydown", onKey)
+    }, [handleShortcut, sourcesPanel])
     const onCtxMenu = React.useCallback(
         (d: { x: number; y: number; text: string | null; href: string | null }) => {
             console.log("[App] ctxmenu", d)
