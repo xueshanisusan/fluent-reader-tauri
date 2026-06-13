@@ -4,7 +4,9 @@ import {
     TouchBarTexts,
     WindowStateListenerType,
 } from "../schema-types"
-import { IObjectWithKey } from "@fluentui/react"
+// Local stand-in for FluentUI's IObjectWithKey so we can drop the @fluentui/react
+// dep entirely. The only callsite below uses it as a structural callback param type.
+type IObjectWithKey = { key: string | number }
 
 const utilsBridge = {
     platform: process.platform,

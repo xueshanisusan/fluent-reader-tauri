@@ -1,36 +1,5 @@
-import "./spike-mock.js"
 import * as React from "react"
 import * as ReactDOM from "react-dom"
-import { Provider } from "react-redux"
-import { initializeIcons } from "@fluentui/react/lib/Icons"
-import Root from "./components/root"
-import { initApp, openTextMenu } from "./scripts/models/app"
-import { rootStore } from "./scripts/reducer"
+import { App } from "./components/App"
 
-window.settings.setProxy()
-
-initializeIcons("icons/")
-
-rootStore.dispatch(initApp())
-
-window.utils.addMainContextListener((pos, text) => {
-    rootStore.dispatch(openTextMenu(pos, text))
-})
-
-window.fontList = [""]
-window.utils.initFontList().then(fonts => {
-    window.fontList.push(...fonts)
-})
-
-ReactDOM.render(
-    <Provider store={rootStore}>
-        <Root />
-    </Provider>,
-    document.getElementById("app")
-)
-
-import { Demo as ArticleViewDemo } from "./components/article/Demo"
-const demoMount = document.createElement("div")
-demoMount.id = "article-demo-portal"
-document.body.appendChild(demoMount)
-ReactDOM.render(<ArticleViewDemo />, demoMount)
+ReactDOM.render(<App />, document.getElementById("app"))
