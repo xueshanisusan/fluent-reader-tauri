@@ -5,6 +5,7 @@ import {
     items as itemsApi,
     sources as sourcesApi,
     type Item,
+    type Source,
 } from "../scripts/db-bridge"
 import { refreshAll, isRefreshSuccess, type RefreshResult } from "../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
@@ -94,6 +95,64 @@ const statusStyle: React.CSSProperties = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+}
+const overlayStyle: React.CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.4)",
+    zIndex: 100,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+}
+const sourcesPanelStyle: React.CSSProperties = {
+    background: "#fff",
+    color: "#222",
+    width: 560,
+    maxWidth: "90vw",
+    maxHeight: "80vh",
+    display: "flex",
+    flexDirection: "column",
+    border: "1px solid #888",
+    borderRadius: 4,
+    boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
+}
+const sourcesHeaderStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 14px",
+    borderBottom: "1px solid #ddd",
+    fontWeight: 600,
+}
+const sourcesListStyle: React.CSSProperties = {
+    flex: 1,
+    overflowY: "auto",
+    padding: 4,
+}
+const sourceRowStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderBottom: "1px solid #eee",
+    fontSize: 13,
+}
+const sourceUrlStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: "#888",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+}
+const deleteBtnStyle: React.CSSProperties = {
+    padding: "3px 10px",
+    background: "#fff",
+    border: "1px solid #c33",
+    color: "#c33",
+    cursor: "pointer",
+    fontSize: 12,
+    borderRadius: 3,
 }
 const filterRowStyle: React.CSSProperties = {
     display: "flex",
@@ -199,6 +258,8 @@ export function App(): React.ReactElement {
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
     const [filter, setFilter] = React.useState<Filter>("all")
+    const [sourcesPanel, setSourcesPanel] = React.useState<Source[] | null>(null)
+    const [deleteInFlight, setDeleteInFlight] = React.useState<number | null>(null)
 
     const cancelledRef = React.useRef(false)
 
@@ -390,6 +451,40 @@ export function App(): React.ReactElement {
         }
     }, [refreshInFlight, loadItems])
 
+    const openSourcesPanel = React.useCallback(async () => {
+        try {
+            const list = await sourcesApi.list()
+            if (cancelledRef.current) return
+            setSourcesPanel(list)
+        } catch (e) {
+            console.error("[App] sources list failed", e)
+            window.alert("Load sources failed: " + String((e as Error)?.message ?? e))
+        }
+    }, [])
+
+    const onDeleteSource = React.useCallback(
+        async (s: Source) => {
+            if (deleteInFlight !== null) return
+            const ok = window.confirm(
+                `Delete "${s.name}"?\nAll items from this feed will also be removed.`
+            )
+            if (!ok) return
+            setDeleteInFlight(s.sid)
+            try {
+                await sourcesApi.delete(s.sid)
+                if (cancelledRef.current) return
+                setSourcesPanel(prev => (prev ? prev.filter(x => x.sid !== s.sid) : prev))
+                await loadItems()
+            } catch (e) {
+                console.error("[App] delete source failed", e)
+                window.alert("Delete failed: " + String((e as Error)?.message ?? e))
+            } finally {
+                if (!cancelledRef.current) setDeleteInFlight(null)
+            }
+        },
+        [deleteInFlight, loadItems]
+    )
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
@@ -440,6 +535,9 @@ export function App(): React.ReactElement {
                     disabled={refreshInFlight}
                     onClick={onRefresh}>
                     {refreshInFlight ? "Refreshing…" : "Refresh feeds"}
+                </button>
+                <button style={headerBtnStyle} onClick={openSourcesPanel}>
+                    Sources
                 </button>
                 <button
                     style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
@@ -530,6 +628,50 @@ export function App(): React.ReactElement {
                 </button>
             </div>
             <div style={bodyStyle}>{renderBody()}</div>
+            {sourcesPanel && (
+                <div style={overlayStyle} onClick={() => setSourcesPanel(null)}>
+                    <div
+                        style={sourcesPanelStyle}
+                        onClick={e => e.stopPropagation()}>
+                        <div style={sourcesHeaderStyle}>
+                            <span style={{ flex: 1 }}>
+                                Sources ({sourcesPanel.length})
+                            </span>
+                            <button
+                                style={headerBtnStyle}
+                                onClick={() => setSourcesPanel(null)}>
+                                Close
+                            </button>
+                        </div>
+                        <div style={sourcesListStyle}>
+                            {sourcesPanel.length === 0 ? (
+                                <div style={{ padding: 24, textAlign: "center", color: "#888" }}>
+                                    No sources yet. Subscribe to one from the bar.
+                                </div>
+                            ) : (
+                                sourcesPanel.map(s => (
+                                    <div key={s.sid} style={sourceRowStyle}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 500 }}>{s.name}</div>
+                                            <div style={sourceUrlStyle}>{s.url}</div>
+                                        </div>
+                                        <button
+                                            style={
+                                                deleteInFlight === s.sid
+                                                    ? { ...deleteBtnStyle, opacity: 0.5 }
+                                                    : deleteBtnStyle
+                                            }
+                                            disabled={deleteInFlight === s.sid}
+                                            onClick={() => onDeleteSource(s)}>
+                                            {deleteInFlight === s.sid ? "…" : "Delete"}
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 
