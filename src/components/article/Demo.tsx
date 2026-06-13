@@ -84,13 +84,19 @@ const listStyle: React.CSSProperties = {
     overflowY: "auto",
     flexShrink: 0,
 }
-const listRowStyle = (selected: boolean): React.CSSProperties => ({
+const listRowStyle = (selected: boolean, hasRead: boolean): React.CSSProperties => ({
     padding: "10px 12px",
     borderBottom: "1px solid #eee",
     cursor: "pointer",
     background: selected ? "#dde7f7" : "transparent",
     fontSize: 13,
+    color: hasRead ? "#999" : "#222",
 })
+const starIconStyle: React.CSSProperties = {
+    marginLeft: 6,
+    color: "#e6b800",
+    fontSize: 12,
+}
 const articlePaneStyle: React.CSSProperties = {
     flex: 1,
     position: "relative",
@@ -365,6 +371,58 @@ export function Demo(): React.ReactElement {
         [finalizeSubscribe]
     )
 
+    const applyItemPatch = React.useCallback(
+        (iid: number, patch: Partial<Item>) => {
+            setItems(prev =>
+                prev ? prev.map(it => (it.iid === iid ? { ...it, ...patch } : it)) : prev
+            )
+            setSelectedItem(prev => (prev && prev.iid === iid ? { ...prev, ...patch } : prev))
+        },
+        []
+    )
+
+    const onToggleRead = React.useCallback(async () => {
+        if (!selectedItem) return
+        const next = !selectedItem.hasRead
+        applyItemPatch(selectedItem.iid, { hasRead: next })
+        try {
+            await itemsApi.markRead(selectedItem.iid, next)
+        } catch (e) {
+            applyItemPatch(selectedItem.iid, { hasRead: !next })
+            console.error("[Demo] markRead failed", e)
+        }
+    }, [selectedItem, applyItemPatch])
+
+    const onToggleStar = React.useCallback(async () => {
+        if (!selectedItem) return
+        const next = !selectedItem.starred
+        applyItemPatch(selectedItem.iid, { starred: next })
+        try {
+            await itemsApi.setStarred(selectedItem.iid, next)
+        } catch (e) {
+            applyItemPatch(selectedItem.iid, { starred: !next })
+            console.error("[Demo] setStarred failed", e)
+        }
+    }, [selectedItem, applyItemPatch])
+
+    const onMarkAllRead = React.useCallback(async () => {
+        if (!items) return
+        const unread = items.filter(i => !i.hasRead)
+        if (unread.length === 0) return
+        setItems(prev => (prev ? prev.map(it => ({ ...it, hasRead: true })) : prev))
+        setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
+        // Fire-and-forget per-item; backend has no bulk endpoint yet.
+        const results = await Promise.allSettled(
+            unread.map(it => itemsApi.markRead(it.iid, true))
+        )
+        const failed = results.filter(r => r.status === "rejected").length
+        if (failed > 0) {
+            console.error(`[Demo] mark all read: ${failed} of ${unread.length} failed`)
+            // Reload to reconcile.
+            await loadItems()
+        }
+    }, [items, loadItems])
+
     const onRefresh = React.useCallback(async () => {
         if (refreshInFlight) return
         setRefreshInFlight(true)
@@ -423,6 +481,28 @@ export function Demo(): React.ReactElement {
                         <span style={refreshStatusStyle}>{refreshStatus}</span>
                     )}
                 </span>
+                <button
+                    style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
+                    disabled={!selectedItem}
+                    onClick={onToggleRead}>
+                    {selectedItem?.hasRead ? "Mark unread" : "Mark read"}
+                </button>
+                <button
+                    style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
+                    disabled={!selectedItem}
+                    onClick={onToggleStar}>
+                    {selectedItem?.starred ? "Unstar" : "Star"}
+                </button>
+                <button
+                    style={
+                        items && items.some(i => !i.hasRead)
+                            ? headerBtnStyle
+                            : headerBtnDisabledStyle
+                    }
+                    disabled={!items || !items.some(i => !i.hasRead)}
+                    onClick={onMarkAllRead}>
+                    Mark all read
+                </button>
                 <button
                     style={refreshInFlight ? headerBtnDisabledStyle : headerBtnStyle}
                     disabled={refreshInFlight}
@@ -553,9 +633,12 @@ export function Demo(): React.ReactElement {
                         {items.map(it => (
                             <div
                                 key={it.iid}
-                                style={listRowStyle(selectedItem?.iid === it.iid)}
+                                style={listRowStyle(selectedItem?.iid === it.iid, it.hasRead)}
                                 onClick={() => setSelectedItem(it)}>
-                                <div style={{ fontWeight: 500 }}>{it.title}</div>
+                                <div style={{ fontWeight: it.hasRead ? 400 : 600 }}>
+                                    {it.title}
+                                    {it.starred && <span style={starIconStyle}>★</span>}
+                                </div>
                                 <div
                                     style={{
                                         fontSize: 11,
