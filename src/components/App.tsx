@@ -1,56 +1,24 @@
 import * as React from "react"
-import { ArticleView } from "./ArticleView"
-import { openExternal } from "../../scripts/shell-bridge"
+import { ArticleView } from "./article/ArticleView"
+import { openExternal } from "../scripts/shell-bridge"
 import {
     items as itemsApi,
     sources as sourcesApi,
     type Item,
-} from "../../scripts/db-bridge"
-import { refreshAll, isRefreshSuccess, type RefreshResult } from "../../scripts/feeds"
-import { feeds as feedsApi, type DiscoveredFeed } from "../../scripts/feeds-bridge"
-import { startAutoRefresh } from "../../scripts/auto-refresh"
+} from "../scripts/db-bridge"
+import { refreshAll, isRefreshSuccess, type RefreshResult } from "../scripts/feeds"
+import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
+import { startAutoRefresh } from "../scripts/auto-refresh"
 
-// SPIKE ONLY: delete this seed path (and the spike://demo rows) before v2 ships.
-// Sources/items with url prefix `spike://` are demo-only and never come from real feeds.
-const SEED_ENABLED = true
-const DEMO_SOURCE_URL = "spike://demo"
-const DEMO_SOURCE_NAME = "Demo"
-
-const SEED_ITEMS: ReadonlyArray<{ title: string; html: string }> = [
-    {
-        title: "Welcome to fluent-reader v2",
-        html: `<h1>Welcome</h1><p>This article is rendered through the sandboxed iframe pipeline (<code>sandbox="allow-scripts"</code> + strict CSP). Test the link handler: <a href="https://example.com">https://example.com</a>.</p>`,
-    },
-    {
-        title: "Renderer security model",
-        html: `<h2>How rendering works</h2><p>HTML from feeds passes through <code>sanitize-html</code> with a tight allowlist before reaching the iframe. Inline scripts, <code>&lt;svg&gt;</code>, <code>&lt;math&gt;</code>, and CSS that could exfiltrate are stripped.</p><blockquote>Each article gets a fresh iframe — the <code>articleId</code> prop keys the iframe element.</blockquote>`,
-    },
-    {
-        title: "Still TODO",
-        html: `<h2>Out of scope for this commit</h2><ul><li>Toolbar (mark read, font size, open external)</li><li>Feed ingestion (RSS fetch → parse → upsert)</li><li>Replacing the legacy redux <code>&lt;Root /&gt;</code></li><li>SQLite WAL mode + pool sizing</li></ul>`,
-    },
-]
-
-const overlayStyle: React.CSSProperties = {
+const appStyle: React.CSSProperties = {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.45)",
-    zIndex: 99998,
     display: "flex",
     flexDirection: "column",
-}
-const openBtnStyle: React.CSSProperties = {
-    position: "fixed",
-    right: 16,
-    bottom: 16,
-    zIndex: 99999,
-    padding: "10px 14px",
-    borderRadius: 4,
-    border: "1px solid #444",
-    background: "#222",
-    color: "#fff",
-    fontSize: 13,
-    cursor: "pointer",
+    background: "#fff",
+    color: "#222",
+    fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
 }
 const headerStyle: React.CSSProperties = {
     display: "flex",
@@ -118,12 +86,7 @@ const errorPaneStyle: React.CSSProperties = {
     flexDirection: "column",
     gap: 8,
 }
-const seedErrorStyle: React.CSSProperties = {
-    marginTop: 8,
-    color: "#a00",
-    fontSize: 12,
-}
-const refreshStatusStyle: React.CSSProperties = {
+const statusStyle: React.CSSProperties = {
     fontSize: 11,
     color: "#bbb",
     marginLeft: 8,
@@ -204,44 +167,11 @@ function formatRefreshSummary(results: RefreshResult[]): string {
     return out
 }
 
-async function ensureDemoSource(): Promise<number> {
-    const existing = await sourcesApi.list()
-    const found = existing.find(s => s.url === DEMO_SOURCE_URL)
-    if (found) return found.sid
-    const created = await sourcesApi.create({
-        url: DEMO_SOURCE_URL,
-        name: DEMO_SOURCE_NAME,
-    })
-    return created.sid
-}
-
-async function seedIfEmpty(): Promise<void> {
-    const sourceId = await ensureDemoSource()
-    // Backend `items_insert` is bare INSERT (no ON CONFLICT) — must dedup before write.
-    // Still racy on rapid double-click; the in-flight flag in the button gates that.
-    const probe = await itemsApi.list({ sourceId, limit: 1 })
-    if (probe.length > 0) return
-    const now = Date.now()
-    await itemsApi.insert(
-        SEED_ITEMS.map((s, i) => ({
-            sourceId,
-            title: s.title,
-            link: `${DEMO_SOURCE_URL}/item-${i}`,
-            dateMs: now - i * 60_000,
-            content: s.html,
-            snippet: s.title,
-        }))
-    )
-}
-
-export function Demo(): React.ReactElement {
-    const [show, setShow] = React.useState(false)
+export function App(): React.ReactElement {
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
     const [listLoading, setListLoading] = React.useState(false)
     const [listError, setListError] = React.useState<string | null>(null)
-    const [seedError, setSeedError] = React.useState<string | null>(null)
-    const [seedInFlight, setSeedInFlight] = React.useState(false)
     const [refreshInFlight, setRefreshInFlight] = React.useState(false)
     const [refreshStatus, setRefreshStatus] = React.useState<string | null>(null)
     const [subscribeUrl, setSubscribeUrl] = React.useState("")
@@ -272,59 +202,84 @@ export function Demo(): React.ReactElement {
     }, [])
 
     React.useEffect(() => {
-        if (!show) return
         cancelledRef.current = false
         loadItems()
         return () => {
             cancelledRef.current = true
         }
-    }, [show, loadItems])
+    }, [loadItems])
 
     React.useEffect(() => {
-        if (!show) return
-        function onWindowKey(e: KeyboardEvent): void {
-            if (e.key === "Escape") setShow(false)
-        }
-        window.addEventListener("keydown", onWindowKey)
-        return () => window.removeEventListener("keydown", onWindowKey)
-    }, [show])
-
-    React.useEffect(() => {
-        if (!show) return
         const stop = startAutoRefresh({
             onTick: results => {
                 if (cancelledRef.current) return
                 const inserted = results.reduce(
-                    (n, r) => n + (isRefreshSuccess(r) && r.outcome.kind === "updated" ? r.outcome.inserted : 0),
+                    (n, r) =>
+                        n +
+                        (isRefreshSuccess(r) && r.outcome.kind === "updated"
+                            ? r.outcome.inserted
+                            : 0),
                     0
                 )
-                setRefreshStatus(
-                    `auto: ${results.length} checked · ${inserted} new`
-                )
+                setRefreshStatus(`auto: ${results.length} checked · ${inserted} new`)
                 void loadItems()
             },
             onError: e => {
-                console.error("[Demo] auto-refresh tick failed", e)
+                console.error("[App] auto-refresh tick failed", e)
             },
         })
         return stop
-    }, [show, loadItems])
+    }, [loadItems])
 
-    const onSeed = React.useCallback(async () => {
-        if (seedInFlight) return
-        setSeedInFlight(true)
-        setSeedError(null)
+    const applyItemPatch = React.useCallback(
+        (iid: number, patch: Partial<Item>) => {
+            setItems(prev =>
+                prev ? prev.map(it => (it.iid === iid ? { ...it, ...patch } : it)) : prev
+            )
+            setSelectedItem(prev => (prev && prev.iid === iid ? { ...prev, ...patch } : prev))
+        },
+        []
+    )
+
+    const onToggleRead = React.useCallback(async () => {
+        if (!selectedItem) return
+        const next = !selectedItem.hasRead
+        applyItemPatch(selectedItem.iid, { hasRead: next })
         try {
-            await seedIfEmpty()
-            if (cancelledRef.current) return
-            await loadItems()
+            await itemsApi.markRead(selectedItem.iid, next)
         } catch (e) {
-            if (cancelledRef.current) return
-            setSeedError(String((e as Error)?.message ?? e))
-        } finally {
-            if (!cancelledRef.current) setSeedInFlight(false)
+            applyItemPatch(selectedItem.iid, { hasRead: !next })
+            console.error("[App] markRead failed", e)
         }
-    }, [seedInFlight, loadItems])
+    }, [selectedItem, applyItemPatch])
+
+    const onToggleStar = React.useCallback(async () => {
+        if (!selectedItem) return
+        const next = !selectedItem.starred
+        applyItemPatch(selectedItem.iid, { starred: next })
+        try {
+            await itemsApi.setStarred(selectedItem.iid, next)
+        } catch (e) {
+            applyItemPatch(selectedItem.iid, { starred: !next })
+            console.error("[App] setStarred failed", e)
+        }
+    }, [selectedItem, applyItemPatch])
+
+    const onMarkAllRead = React.useCallback(async () => {
+        if (!items) return
+        const unread = items.filter(i => !i.hasRead)
+        if (unread.length === 0) return
+        setItems(prev => (prev ? prev.map(it => ({ ...it, hasRead: true })) : prev))
+        setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
+        const results = await Promise.allSettled(
+            unread.map(it => itemsApi.markRead(it.iid, true))
+        )
+        const failed = results.filter(r => r.status === "rejected").length
+        if (failed > 0) {
+            console.error(`[App] mark all read: ${failed} of ${unread.length} failed`)
+            await loadItems()
+        }
+    }, [items, loadItems])
 
     const finalizeSubscribe = React.useCallback(
         async (feed: DiscoveredFeed) => {
@@ -358,7 +313,6 @@ export function Demo(): React.ReactElement {
             if (found.length === 1) {
                 await finalizeSubscribe(found[0])
             } else {
-                // multiple feeds — let user pick
                 setPicker(found)
                 setSubscribeStatus(`${found.length} feeds found — pick one`)
             }
@@ -393,68 +347,13 @@ export function Demo(): React.ReactElement {
         [finalizeSubscribe]
     )
 
-    const applyItemPatch = React.useCallback(
-        (iid: number, patch: Partial<Item>) => {
-            setItems(prev =>
-                prev ? prev.map(it => (it.iid === iid ? { ...it, ...patch } : it)) : prev
-            )
-            setSelectedItem(prev => (prev && prev.iid === iid ? { ...prev, ...patch } : prev))
-        },
-        []
-    )
-
-    const onToggleRead = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.hasRead
-        applyItemPatch(selectedItem.iid, { hasRead: next })
-        try {
-            await itemsApi.markRead(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { hasRead: !next })
-            console.error("[Demo] markRead failed", e)
-        }
-    }, [selectedItem, applyItemPatch])
-
-    const onToggleStar = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.starred
-        applyItemPatch(selectedItem.iid, { starred: next })
-        try {
-            await itemsApi.setStarred(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { starred: !next })
-            console.error("[Demo] setStarred failed", e)
-        }
-    }, [selectedItem, applyItemPatch])
-
-    const onMarkAllRead = React.useCallback(async () => {
-        if (!items) return
-        const unread = items.filter(i => !i.hasRead)
-        if (unread.length === 0) return
-        setItems(prev => (prev ? prev.map(it => ({ ...it, hasRead: true })) : prev))
-        setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
-        // Fire-and-forget per-item; backend has no bulk endpoint yet.
-        const results = await Promise.allSettled(
-            unread.map(it => itemsApi.markRead(it.iid, true))
-        )
-        const failed = results.filter(r => r.status === "rejected").length
-        if (failed > 0) {
-            console.error(`[Demo] mark all read: ${failed} of ${unread.length} failed`)
-            // Reload to reconcile.
-            await loadItems()
-        }
-    }, [items, loadItems])
-
     const onRefresh = React.useCallback(async () => {
         if (refreshInFlight) return
         setRefreshInFlight(true)
         setRefreshStatus("refreshing…")
         try {
-            // Skip demo spike:// sources — they aren't real feeds.
             const sources = await sourcesApi.list()
-            const sids = sources
-                .filter(s => !s.url.startsWith("spike://"))
-                .map(s => s.sid)
+            const sids = sources.map(s => s.sid)
             const results = await refreshAll(sids)
             if (cancelledRef.current) return
             setRefreshStatus(formatRefreshSummary(results))
@@ -469,39 +368,26 @@ export function Demo(): React.ReactElement {
 
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
-            console.error("[Demo] openExternal failed", err)
+            console.error("[App] openExternal failed", err)
             window.alert("Open link failed: " + String((err as Error)?.message ?? err))
         })
     }, [])
 
-    const onArticleKey = React.useCallback((key: string) => {
-        if (key === "Escape") setShow(false)
-    }, [])
-
+    const onArticleKey = React.useCallback(() => {}, [])
     const onCtxMenu = React.useCallback(
         (d: { x: number; y: number; text: string | null; href: string | null }) => {
-            console.log("[Demo] ctxmenu", d)
+            console.log("[App] ctxmenu", d)
         },
         []
     )
 
-    if (!show) {
-        return (
-            <button style={openBtnStyle} onClick={() => setShow(true)}>
-                Open v2 demo
-            </button>
-        )
-    }
-
     return (
-        <div style={overlayStyle}>
+        <div style={appStyle}>
             <div style={headerStyle}>
                 <span style={{ flex: 1 }}>
-                    v2 demo{items ? ` — ${items.length} items` : ""}
+                    fluent-reader{items ? ` — ${items.length} items` : ""}
                     {selectedItem ? ` — ${selectedItem.title}` : ""}
-                    {refreshStatus && (
-                        <span style={refreshStatusStyle}>{refreshStatus}</span>
-                    )}
+                    {refreshStatus && <span style={statusStyle}>{refreshStatus}</span>}
                 </span>
                 <button
                     style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
@@ -537,9 +423,6 @@ export function Demo(): React.ReactElement {
                     onClick={() => setRemount(n => n + 1)}>
                     Remount iframe
                 </button>
-                <button style={headerBtnStyle} onClick={() => setShow(false)}>
-                    Close (Esc)
-                </button>
             </div>
             <div style={subscribeRowStyle}>
                 {picker ? (
@@ -552,7 +435,13 @@ export function Demo(): React.ReactElement {
                                     onClick={() => onPickFeed(f)}>
                                     Add
                                 </button>
-                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <span
+                                    style={{
+                                        flex: 1,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }}>
                                     {f.title ? `${f.title} — ` : ""}
                                     <span style={{ color: "#aaa" }}>{f.url}</span>
                                 </span>
@@ -596,7 +485,7 @@ export function Demo(): React.ReactElement {
                     </>
                 )}
                 {subscribeStatus && !picker && (
-                    <span style={refreshStatusStyle}>{subscribeStatus}</span>
+                    <span style={statusStyle}>{subscribeStatus}</span>
                 )}
             </div>
             <div style={bodyStyle}>{renderBody()}</div>
@@ -622,28 +511,10 @@ export function Demo(): React.ReactElement {
             return (
                 <div style={centeredStyle}>
                     <div>
-                        <div style={{ marginBottom: 12 }}>No items in db.</div>
-                        {SEED_ENABLED ? (
-                            <>
-                                <button
-                                    style={
-                                        seedInFlight
-                                            ? headerBtnDisabledStyle
-                                            : headerBtnStyle
-                                    }
-                                    disabled={seedInFlight}
-                                    onClick={onSeed}>
-                                    {seedInFlight ? "Seeding…" : "Seed test items"}
-                                </button>
-                                {seedError && (
-                                    <div style={seedErrorStyle}>{seedError}</div>
-                                )}
-                            </>
-                        ) : (
-                            <div style={{ fontSize: 11, color: "#666" }}>
-                                Subscribe to a feed first.
-                            </div>
-                        )}
+                        <div style={{ marginBottom: 12 }}>No items yet.</div>
+                        <div style={{ fontSize: 11, color: "#666" }}>
+                            Subscribe to a feed in the bar above.
+                        </div>
                     </div>
                 </div>
             )
