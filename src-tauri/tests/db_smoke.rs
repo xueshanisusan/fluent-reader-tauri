@@ -8,7 +8,7 @@ async fn schema_smoke() {
         .fetch_one(&pool)
         .await
         .expect("schema_meta version");
-    assert_eq!(version, "2");
+    assert_eq!(version, "3");
 
     let gid: i64 = sqlx::query_scalar(
         "INSERT INTO groups (name, position) VALUES ('Tech', 0) RETURNING gid",

@@ -149,6 +149,7 @@ async fn repo_crud_roundtrip() {
             content: Some(format!("<p>body {}</p>", i)),
             snippet: Some(format!("body {}", i)),
             creator: if i % 2 == 0 { Some("alice".into()) } else { None },
+            guid: None,
         })
         .collect();
     let inserted = repo::items::insert_many(&pool, new_items).await.unwrap();
@@ -198,4 +199,83 @@ async fn repo_crud_roundtrip() {
     let groups_after = repo::groups::list(&pool).await.unwrap();
     assert_eq!(groups_after.len(), 1);
     assert_eq!(groups_after[0].gid, g_tech.gid);
+}
+
+#[tokio::test]
+async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
+    // Stronger dedup: a feed that re-issues the same <guid> with a mutated link
+    // (e.g. URL params, redirect normalization) should still be skipped.
+    let pool = db::open_memory().await.expect("open db");
+    let src = repo::sources::create(
+        &pool,
+        NewSource {
+            url: "https://blog.example.com/feed".into(),
+            name: "Blog".into(),
+            icon_url: None,
+            group_id: None,
+            open_target: None,
+            fetch_frequency: None,
+            text_dir: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let first = NewItem {
+        source_id: src.sid,
+        title: "Post A".into(),
+        link: "https://blog.example.com/post-a".into(),
+        date_ms: 1_700_000_000_000,
+        thumb: None,
+        content: Some("v1".into()),
+        snippet: None,
+        creator: None,
+        guid: Some("guid-A".into()),
+    };
+    let second_same_guid_diff_link = NewItem {
+        source_id: src.sid,
+        title: "Post A".into(),
+        // Link mutated with tracking params — looks fresh to (source_id, link).
+        link: "https://blog.example.com/post-a?utm_source=rss".into(),
+        date_ms: 1_700_000_000_000,
+        thumb: None,
+        content: Some("v1".into()),
+        snippet: None,
+        creator: None,
+        guid: Some("guid-A".into()),
+    };
+    let third_no_guid = NewItem {
+        source_id: src.sid,
+        title: "Post B".into(),
+        link: "https://blog.example.com/post-b".into(),
+        date_ms: 1_700_000_100_000,
+        thumb: None,
+        content: None,
+        snippet: None,
+        creator: None,
+        guid: None,
+    };
+
+    let mut tx = pool.begin().await.unwrap();
+    let (inserted, skipped) =
+        repo::items::insert_dedup_in_tx(&mut tx, &[first.clone(), third_no_guid.clone()])
+            .await
+            .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(inserted, 2);
+    assert_eq!(skipped, 0);
+
+    let mut tx = pool.begin().await.unwrap();
+    let (inserted2, skipped2) = repo::items::insert_dedup_in_tx(
+        &mut tx,
+        &[second_same_guid_diff_link.clone(), third_no_guid.clone()],
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(inserted2, 0, "guid match must skip even though link is new");
+    assert_eq!(skipped2, 2, "second item also skipped via link index");
+
+    let all = repo::items::list(&pool, Some(src.sid), None, None, 100, 0).await.unwrap();
+    assert_eq!(all.len(), 2, "no duplicate rows");
 }

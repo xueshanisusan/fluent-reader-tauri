@@ -52,6 +52,9 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
         .flat_map(|m| m.thumbnails)
         .next()
         .map(|t| t.image.uri);
+    // feed-rs always sets entry.id (synthesizes a stable hash when the feed
+    // omits <guid>/atom:id). Empty string is theoretical but normalize to None.
+    let guid = if entry.id.is_empty() { None } else { Some(entry.id) };
 
     Some(NewItem {
         source_id,
@@ -62,6 +65,7 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
         content,
         snippet,
         creator,
+        guid,
     })
 }
 

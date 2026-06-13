@@ -62,6 +62,7 @@ pub struct Item {
     pub hidden: bool,
     pub notify: bool,
     pub service_ref: Option<String>,
+    pub guid: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -87,6 +88,8 @@ pub struct NewItem {
     pub content: Option<String>,
     pub snippet: Option<String>,
     pub creator: Option<String>,
+    #[serde(default)]
+    pub guid: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

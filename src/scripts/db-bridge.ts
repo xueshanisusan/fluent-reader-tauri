@@ -80,6 +80,7 @@ export interface Item {
   hidden: boolean;
   notify: boolean;
   serviceRef: string | null;
+  guid: string | null;
 }
 
 export interface NewItem {
@@ -91,6 +92,7 @@ export interface NewItem {
   content?: string | null;
   snippet?: string | null;
   creator?: string | null;
+  guid?: string | null;
 }
 
 export interface UnreadCount {
