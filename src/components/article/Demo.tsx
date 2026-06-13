@@ -8,6 +8,7 @@ import {
 } from "../../scripts/db-bridge"
 import { refreshAll, isRefreshSuccess, type RefreshResult } from "../../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../../scripts/feeds-bridge"
+import { startAutoRefresh } from "../../scripts/auto-refresh"
 
 // SPIKE ONLY: delete this seed path (and the spike://demo rows) before v2 ships.
 // Sources/items with url prefix `spike://` are demo-only and never come from real feeds.
@@ -287,6 +288,27 @@ export function Demo(): React.ReactElement {
         window.addEventListener("keydown", onWindowKey)
         return () => window.removeEventListener("keydown", onWindowKey)
     }, [show])
+
+    React.useEffect(() => {
+        if (!show) return
+        const stop = startAutoRefresh({
+            onTick: results => {
+                if (cancelledRef.current) return
+                const inserted = results.reduce(
+                    (n, r) => n + (isRefreshSuccess(r) && r.outcome.kind === "updated" ? r.outcome.inserted : 0),
+                    0
+                )
+                setRefreshStatus(
+                    `auto: ${results.length} checked · ${inserted} new`
+                )
+                void loadItems()
+            },
+            onError: e => {
+                console.error("[Demo] auto-refresh tick failed", e)
+            },
+        })
+        return stop
+    }, [show, loadItems])
 
     const onSeed = React.useCallback(async () => {
         if (seedInFlight) return
