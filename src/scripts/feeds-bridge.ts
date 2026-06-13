@@ -12,7 +12,18 @@ export type IngestionError =
   | { kind: "parse"; message: string }
   | { kind: "db"; message: string };
 
+export interface DiscoveredFeed {
+  url: string;
+  title: string | null;
+}
+
+export type DiscoveryError =
+  | { kind: "network"; message: string }
+  | { kind: "notFound"; message: string };
+
 export const feeds = {
   ingest: (sid: number) =>
     invoke<IngestionOutcome>("sources_ingest", { sid }),
+  discover: (url: string) =>
+    invoke<DiscoveredFeed[]>("feeds_discover", { url }),
 };

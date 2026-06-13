@@ -7,6 +7,7 @@ import {
     type Item,
 } from "../../scripts/db-bridge"
 import { refreshAll, isRefreshSuccess, type RefreshResult } from "../../scripts/feeds"
+import { feeds as feedsApi, type DiscoveredFeed } from "../../scripts/feeds-bridge"
 
 // SPIKE ONLY: delete this seed path (and the spike://demo rows) before v2 ships.
 // Sources/items with url prefix `spike://` are demo-only and never come from real feeds.
@@ -124,6 +125,44 @@ const refreshStatusStyle: React.CSSProperties = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
 }
+const subscribeRowStyle: React.CSSProperties = {
+    display: "flex",
+    gap: 8,
+    padding: "4px 8px",
+    background: "#1a1a1a",
+    color: "#fff",
+    fontSize: 12,
+    alignItems: "center",
+    borderTop: "1px solid #333",
+}
+const subscribeInputStyle: React.CSSProperties = {
+    flex: 1,
+    padding: "4px 8px",
+    background: "#111",
+    border: "1px solid #444",
+    color: "#fff",
+    fontSize: 12,
+    minWidth: 0,
+}
+const pickerStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    flex: 1,
+}
+const pickerRowStyle: React.CSSProperties = {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+}
+const pickerBtnStyle: React.CSSProperties = {
+    padding: "2px 8px",
+    background: "#446",
+    border: "1px solid #668",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 11,
+}
 
 function formatRefreshSummary(results: RefreshResult[]): string {
     if (results.length === 0) return "no feeds to refresh"
@@ -198,6 +237,10 @@ export function Demo(): React.ReactElement {
     const [seedInFlight, setSeedInFlight] = React.useState(false)
     const [refreshInFlight, setRefreshInFlight] = React.useState(false)
     const [refreshStatus, setRefreshStatus] = React.useState<string | null>(null)
+    const [subscribeUrl, setSubscribeUrl] = React.useState("")
+    const [subscribeInFlight, setSubscribeInFlight] = React.useState(false)
+    const [subscribeStatus, setSubscribeStatus] = React.useState<string | null>(null)
+    const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
 
     const cancelledRef = React.useRef(false)
@@ -254,6 +297,73 @@ export function Demo(): React.ReactElement {
             if (!cancelledRef.current) setSeedInFlight(false)
         }
     }, [seedInFlight, loadItems])
+
+    const finalizeSubscribe = React.useCallback(
+        async (feed: DiscoveredFeed) => {
+            const created = await sourcesApi.create({
+                url: feed.url,
+                name: feed.title?.trim() || feed.url,
+            })
+            const outcome = await feedsApi.ingest(created.sid)
+            if (cancelledRef.current) return
+            const summary =
+                outcome.kind === "updated"
+                    ? `subscribed · ${outcome.inserted} new`
+                    : `subscribed · not modified`
+            setSubscribeStatus(`${feed.url} — ${summary}`)
+            setSubscribeUrl("")
+            setPicker(null)
+            await loadItems()
+        },
+        [loadItems]
+    )
+
+    const onSubscribe = React.useCallback(async () => {
+        const url = subscribeUrl.trim()
+        if (!url || subscribeInFlight) return
+        setSubscribeInFlight(true)
+        setSubscribeStatus("discovering…")
+        setPicker(null)
+        try {
+            const found = await feedsApi.discover(url)
+            if (cancelledRef.current) return
+            if (found.length === 1) {
+                await finalizeSubscribe(found[0])
+            } else {
+                // multiple feeds — let user pick
+                setPicker(found)
+                setSubscribeStatus(`${found.length} feeds found — pick one`)
+            }
+        } catch (e) {
+            if (cancelledRef.current) return
+            const err = e as { kind?: string; message?: string } | Error
+            const kind = (err as { kind?: string }).kind
+            const message = (err as { message?: string }).message ?? String(e)
+            setSubscribeStatus(
+                kind ? `subscribe failed (${kind}): ${message}` : `subscribe failed: ${message}`
+            )
+        } finally {
+            if (!cancelledRef.current) setSubscribeInFlight(false)
+        }
+    }, [subscribeUrl, subscribeInFlight, finalizeSubscribe])
+
+    const onPickFeed = React.useCallback(
+        async (feed: DiscoveredFeed) => {
+            setSubscribeInFlight(true)
+            setSubscribeStatus("subscribing…")
+            try {
+                await finalizeSubscribe(feed)
+            } catch (e) {
+                if (cancelledRef.current) return
+                setSubscribeStatus(
+                    "subscribe failed: " + String((e as Error)?.message ?? e)
+                )
+            } finally {
+                if (!cancelledRef.current) setSubscribeInFlight(false)
+            }
+        },
+        [finalizeSubscribe]
+    )
 
     const onRefresh = React.useCallback(async () => {
         if (refreshInFlight) return
@@ -328,6 +438,64 @@ export function Demo(): React.ReactElement {
                 <button style={headerBtnStyle} onClick={() => setShow(false)}>
                     Close (Esc)
                 </button>
+            </div>
+            <div style={subscribeRowStyle}>
+                {picker ? (
+                    <div style={pickerStyle}>
+                        {picker.map((f, i) => (
+                            <div key={`${f.url}-${i}`} style={pickerRowStyle}>
+                                <button
+                                    style={pickerBtnStyle}
+                                    disabled={subscribeInFlight}
+                                    onClick={() => onPickFeed(f)}>
+                                    Add
+                                </button>
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {f.title ? `${f.title} — ` : ""}
+                                    <span style={{ color: "#aaa" }}>{f.url}</span>
+                                </span>
+                            </div>
+                        ))}
+                        <div style={pickerRowStyle}>
+                            <button
+                                style={pickerBtnStyle}
+                                onClick={() => {
+                                    setPicker(null)
+                                    setSubscribeStatus(null)
+                                }}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <span>Add feed:</span>
+                        <input
+                            style={subscribeInputStyle}
+                            type="text"
+                            placeholder="https://example.com or https://example.com/feed.xml"
+                            value={subscribeUrl}
+                            onChange={e => setSubscribeUrl(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === "Enter") onSubscribe()
+                            }}
+                            disabled={subscribeInFlight}
+                        />
+                        <button
+                            style={
+                                subscribeInFlight || !subscribeUrl.trim()
+                                    ? headerBtnDisabledStyle
+                                    : headerBtnStyle
+                            }
+                            disabled={subscribeInFlight || !subscribeUrl.trim()}
+                            onClick={onSubscribe}>
+                            {subscribeInFlight ? "…" : "Add"}
+                        </button>
+                    </>
+                )}
+                {subscribeStatus && !picker && (
+                    <span style={refreshStatusStyle}>{subscribeStatus}</span>
+                )}
             </div>
             <div style={bodyStyle}>{renderBody()}</div>
         </div>
