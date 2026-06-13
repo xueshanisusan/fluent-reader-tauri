@@ -48,6 +48,7 @@ pub fn run() {
             commands::items_unread_counts,
             net::net_fetch,
             feeds::sources_ingest,
+            feeds::feeds_discover,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

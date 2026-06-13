@@ -164,3 +164,95 @@ pub async fn sources_ingest(
 ) -> Result<IngestionOutcome, IngestionError> {
     ingest(&state.pool, sid).await
 }
+
+// Feed auto-discovery: given an arbitrary URL, return the feed URLs we can ingest.
+//   • If the response body itself parses as a feed → return one entry pointing
+//     at the final (post-redirect) URL.
+//   • Else parse as HTML and pull <link rel="alternate" type="application/{rss,atom}+xml">
+//     out of <head>. Relative hrefs resolve against the final URL.
+
+const FEED_TYPES: &[&str] = &[
+    "application/rss+xml",
+    "application/atom+xml",
+    "application/feed+json",
+    "application/json",
+];
+
+fn looks_like_feed_type(t: &str) -> bool {
+    let t = t.to_ascii_lowercase();
+    FEED_TYPES.iter().any(|wanted| t.contains(wanted))
+}
+
+pub async fn discover(input_url: &str) -> Result<Vec<DiscoveredFeed>, DiscoveryError> {
+    let resp = net::fetch(FetchRequest {
+        url: input_url.to_string(),
+        method: Some("GET".to_string()),
+        headers: None,
+        timeout_ms: None,
+    })
+    .await
+    .map_err(|e| DiscoveryError::Network { message: e.to_string() })?;
+
+    if !(200..300).contains(&resp.status) {
+        return Err(DiscoveryError::Network {
+            message: format!("http {}", resp.status),
+        });
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&resp.body_base64)
+        .map_err(|e| DiscoveryError::Network { message: e.to_string() })?;
+
+    // Cheap probe: does this parse as a feed? If yes, the URL itself is the answer.
+    if let Ok(feed) = parser::parse(bytes.as_slice()) {
+        let title = feed.title.map(|t| t.content);
+        return Ok(vec![DiscoveredFeed {
+            url: resp.final_url,
+            title,
+        }]);
+    }
+
+    // Otherwise treat as HTML.
+    let html = String::from_utf8_lossy(&bytes);
+    let base = reqwest::Url::parse(&resp.final_url).ok();
+    let document = scraper::Html::parse_document(&html);
+    let selector = scraper::Selector::parse("head link[rel~=\"alternate\"]")
+        .expect("static selector parses");
+
+    let mut out = Vec::new();
+    for el in document.select(&selector) {
+        let attrs = el.value();
+        let typ = attrs.attr("type").unwrap_or("");
+        if !looks_like_feed_type(typ) {
+            continue;
+        }
+        let href = match attrs.attr("href") {
+            Some(h) => h.trim(),
+            None => continue,
+        };
+        if href.is_empty() {
+            continue;
+        }
+        let resolved = match base.as_ref() {
+            Some(b) => b.join(href).map(|u| u.to_string()).unwrap_or_else(|_| href.to_string()),
+            None => href.to_string(),
+        };
+        let title = attrs.attr("title").map(|s| s.to_string());
+        out.push(DiscoveredFeed { url: resolved, title });
+    }
+
+    if out.is_empty() {
+        return Err(DiscoveryError::NotFound {
+            message: "no feed link found in document".to_string(),
+        });
+    }
+
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn feeds_discover(
+    url: String,
+) -> Result<Vec<DiscoveredFeed>, DiscoveryError> {
+    discover(&url).await
+}

@@ -145,3 +145,17 @@ pub enum IngestionError {
     Parse { message: String },
     Db { message: String },
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredFeed {
+    pub url: String,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DiscoveryError {
+    Network { message: String },
+    NotFound { message: String },
+}

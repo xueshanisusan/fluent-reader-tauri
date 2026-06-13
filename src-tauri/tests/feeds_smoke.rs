@@ -6,7 +6,7 @@
 // Uses httpmock so tests stay hermetic. Source URL is the mock server's
 // 127.0.0.1:xxxxx URL; reqwest in net::fetch hits it directly.
 
-use fluent_reader_lib::models::{IngestionOutcome, NewSource};
+use fluent_reader_lib::models::{DiscoveryError, IngestionOutcome, NewSource};
 use fluent_reader_lib::{db, feeds, repo};
 use httpmock::prelude::*;
 
@@ -143,6 +143,86 @@ async fn ingest_304_skips_insert_but_updates_last_fetched() {
         Some("\"v1\""),
         "etag preserved on 304"
     );
+}
+
+#[tokio::test]
+async fn discover_returns_input_when_body_is_feed() {
+    let server = MockServer::start_async().await;
+    let _m = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/feed.xml");
+            then.status(200)
+                .header("content-type", "application/rss+xml")
+                .body(RSS_BODY);
+        })
+        .await;
+
+    let url = server.url("/feed.xml");
+    let results = feeds::discover(&url).await.expect("discover feed url");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].url, url);
+    assert_eq!(results[0].title.as_deref(), Some("Test Feed"));
+}
+
+#[tokio::test]
+async fn discover_extracts_single_feed_link_from_html() {
+    let server = MockServer::start_async().await;
+    let html = r#"<!doctype html>
+<html><head>
+<title>My Blog</title>
+<link rel="alternate" type="application/rss+xml" title="My Blog Feed" href="/feed.xml">
+</head><body>hi</body></html>"#;
+    let _m = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/");
+            then.status(200).header("content-type", "text/html").body(html);
+        })
+        .await;
+
+    let results = feeds::discover(&server.url("/")).await.expect("discover html");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].url, server.url("/feed.xml"), "relative href resolved");
+    assert_eq!(results[0].title.as_deref(), Some("My Blog Feed"));
+}
+
+#[tokio::test]
+async fn discover_extracts_multiple_feeds_from_html() {
+    let server = MockServer::start_async().await;
+    let html = r#"<!doctype html>
+<html><head>
+<link rel="alternate" type="application/rss+xml" title="Posts" href="https://other.example/posts.rss">
+<link rel="alternate" type="application/atom+xml" title="Comments" href="/comments.atom">
+<link rel="alternate" type="text/html" href="/de/" title="not a feed">
+</head></html>"#;
+    let _m = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/");
+            then.status(200).header("content-type", "text/html").body(html);
+        })
+        .await;
+
+    let results = feeds::discover(&server.url("/")).await.expect("discover html");
+    assert_eq!(results.len(), 2, "ignore non-feed alternate types");
+    assert!(results.iter().any(|r| r.url == "https://other.example/posts.rss"));
+    assert!(results.iter().any(|r| r.url == server.url("/comments.atom")));
+}
+
+#[tokio::test]
+async fn discover_returns_not_found_when_no_feed_link() {
+    let server = MockServer::start_async().await;
+    let _m = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html><head><title>Plain</title></head><body>no feeds here</body></html>");
+        })
+        .await;
+
+    let err = feeds::discover(&server.url("/"))
+        .await
+        .expect_err("should not find feed");
+    matches!(err, DiscoveryError::NotFound { .. });
 }
 
 #[tokio::test]
