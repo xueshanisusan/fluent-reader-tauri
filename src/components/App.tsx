@@ -95,6 +95,23 @@ const statusStyle: React.CSSProperties = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
 }
+const filterRowStyle: React.CSSProperties = {
+    display: "flex",
+    gap: 4,
+    padding: "6px 8px",
+    background: "#f3f3f3",
+    borderBottom: "1px solid #ddd",
+}
+const filterChipStyle = (active: boolean): React.CSSProperties => ({
+    padding: "3px 12px",
+    fontSize: 12,
+    border: "1px solid",
+    borderColor: active ? "#446" : "#bbb",
+    background: active ? "#446" : "#fff",
+    color: active ? "#fff" : "#333",
+    borderRadius: 12,
+    cursor: "pointer",
+})
 const subscribeRowStyle: React.CSSProperties = {
     display: "flex",
     gap: 8,
@@ -167,6 +184,8 @@ function formatRefreshSummary(results: RefreshResult[]): string {
     return out
 }
 
+type Filter = "all" | "unread" | "starred"
+
 export function App(): React.ReactElement {
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
@@ -179,6 +198,7 @@ export function App(): React.ReactElement {
     const [subscribeStatus, setSubscribeStatus] = React.useState<string | null>(null)
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
+    const [filter, setFilter] = React.useState<Filter>("all")
 
     const cancelledRef = React.useRef(false)
 
@@ -186,7 +206,11 @@ export function App(): React.ReactElement {
         setListLoading(true)
         setListError(null)
         try {
-            const list = await itemsApi.list({ limit: 50 })
+            const list = await itemsApi.list({
+                limit: 50,
+                hasRead: filter === "unread" ? false : undefined,
+                starred: filter === "starred" ? true : undefined,
+            })
             if (cancelledRef.current) return
             setItems(list)
             setSelectedItem(prev => {
@@ -199,7 +223,7 @@ export function App(): React.ReactElement {
         } finally {
             if (!cancelledRef.current) setListLoading(false)
         }
-    }, [])
+    }, [filter])
 
     React.useEffect(() => {
         cancelledRef.current = false
@@ -487,6 +511,23 @@ export function App(): React.ReactElement {
                 {subscribeStatus && !picker && (
                     <span style={statusStyle}>{subscribeStatus}</span>
                 )}
+            </div>
+            <div style={filterRowStyle}>
+                <button
+                    style={filterChipStyle(filter === "all")}
+                    onClick={() => setFilter("all")}>
+                    All
+                </button>
+                <button
+                    style={filterChipStyle(filter === "unread")}
+                    onClick={() => setFilter("unread")}>
+                    Unread
+                </button>
+                <button
+                    style={filterChipStyle(filter === "starred")}
+                    onClick={() => setFilter("starred")}>
+                    Starred
+                </button>
             </div>
             <div style={bodyStyle}>{renderBody()}</div>
         </div>
