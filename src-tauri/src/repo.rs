@@ -308,7 +308,7 @@ pub mod items {
     ) -> sqlx::Result<Vec<Item>> {
         let mut sql = String::from(
             "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
-                    snippet, creator, has_read, starred, hidden, notify, service_ref \
+                    snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
              FROM items WHERE 1=1",
         );
         if source_id.is_some() {
@@ -345,8 +345,8 @@ pub mod items {
         for it in items {
             let res = sqlx::query(
                 "INSERT INTO items \
-                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(it.source_id)
             .bind(&it.title)
@@ -357,6 +357,7 @@ pub mod items {
             .bind(it.content.unwrap_or_default())
             .bind(it.snippet.unwrap_or_default())
             .bind(&it.creator)
+            .bind(&it.guid)
             .execute(&mut *tx)
             .await?;
             inserted += res.rows_affected();
@@ -401,12 +402,14 @@ pub mod items {
         }
         let fetched = now_ms();
         let mut inserted = 0u64;
+        // INSERT OR IGNORE because we have two unique indexes — (source_id, link)
+        // unconditional, and (source_id, guid) partial. ON CONFLICT(target) only
+        // accepts one target; OR IGNORE catches either conflict and skips.
         for it in items {
             let res = sqlx::query(
-                "INSERT INTO items \
-                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
-                 ON CONFLICT(source_id, link) DO NOTHING",
+                "INSERT OR IGNORE INTO items \
+                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(it.source_id)
             .bind(&it.title)
@@ -417,6 +420,7 @@ pub mod items {
             .bind(it.content.clone().unwrap_or_default())
             .bind(it.snippet.clone().unwrap_or_default())
             .bind(&it.creator)
+            .bind(&it.guid)
             .execute(&mut *tx)
             .await?;
             inserted += res.rows_affected();
