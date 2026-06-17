@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Runs scripts/check-file.sh on every staged file (added/modified/copied/renamed).
+# Enable once per clone: `git config core.hooksPath .githooks`.
+set -u
+
+failed=0
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    if [ -f "$file" ]; then
+        bash scripts/check-file.sh "$file"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            failed=1
+        fi
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ $failed -ne 0 ]; then
+    echo
+    echo "[guardrail] pre-commit checks failed. Fix the issues above, then re-stage and re-commit." >&2
+    exit 1
+fi
+exit 0
