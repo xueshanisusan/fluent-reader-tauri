@@ -1,5 +1,9 @@
 import * as React from "react"
-import * as ReactDOM from "react-dom"
+import { createRoot } from "react-dom/client"
 import { App } from "./components/App"
 
-ReactDOM.render(<App />, document.getElementById("app"))
+const container = document.getElementById("app")
+if (!container) {
+    throw new Error("missing #app root in index.html")
+}
+createRoot(container).render(<App />)
