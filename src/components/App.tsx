@@ -1,214 +1,21 @@
 import * as React from "react"
 import { ArticleView } from "./article/ArticleView"
 import { openExternal } from "../scripts/shell-bridge"
+import { sources as sourcesApi, type Source } from "../scripts/db-bridge"
 import {
-    items as itemsApi,
-    sources as sourcesApi,
-    type Item,
-    type Source,
-} from "../scripts/db-bridge"
-import { refreshAll, isRefreshSuccess, type RefreshResult } from "../scripts/feeds"
+    refreshAll,
+    isRefreshSuccess,
+    type RefreshResult,
+} from "../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
-
-const appStyle: React.CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    display: "flex",
-    flexDirection: "column",
-    background: "#fff",
-    color: "#222",
-    fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
-}
-const headerStyle: React.CSSProperties = {
-    display: "flex",
-    gap: 8,
-    padding: 8,
-    background: "#222",
-    color: "#fff",
-    fontSize: 13,
-    alignItems: "center",
-}
-const headerBtnStyle: React.CSSProperties = {
-    padding: "4px 10px",
-    background: "#444",
-    border: "1px solid #666",
-    color: "#fff",
-    cursor: "pointer",
-}
-const headerBtnDisabledStyle: React.CSSProperties = {
-    ...headerBtnStyle,
-    opacity: 0.5,
-    cursor: "not-allowed",
-}
-const bodyStyle: React.CSSProperties = {
-    flex: 1,
-    display: "flex",
-    background: "#fff",
-    overflow: "hidden",
-}
-const listStyle: React.CSSProperties = {
-    width: 280,
-    borderRight: "1px solid #ddd",
-    overflowY: "auto",
-    flexShrink: 0,
-}
-const listRowStyle = (selected: boolean, hasRead: boolean): React.CSSProperties => ({
-    padding: "10px 12px",
-    borderBottom: "1px solid #eee",
-    cursor: "pointer",
-    background: selected ? "#dde7f7" : "transparent",
-    fontSize: 13,
-    color: hasRead ? "#999" : "#222",
-})
-const starIconStyle: React.CSSProperties = {
-    marginLeft: 6,
-    color: "#e6b800",
-    fontSize: 12,
-}
-const articlePaneStyle: React.CSSProperties = {
-    flex: 1,
-    position: "relative",
-    overflow: "hidden",
-}
-const centeredStyle: React.CSSProperties = {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    textAlign: "center",
-    color: "#444",
-}
-const errorPaneStyle: React.CSSProperties = {
-    ...centeredStyle,
-    color: "#a00",
-    flexDirection: "column",
-    gap: 8,
-}
-const statusStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: "#bbb",
-    marginLeft: 8,
-    maxWidth: 360,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-}
-const overlayStyle: React.CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.4)",
-    zIndex: 100,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-}
-const sourcesPanelStyle: React.CSSProperties = {
-    background: "#fff",
-    color: "#222",
-    width: 560,
-    maxWidth: "90vw",
-    maxHeight: "80vh",
-    display: "flex",
-    flexDirection: "column",
-    border: "1px solid #888",
-    borderRadius: 4,
-    boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
-}
-const sourcesHeaderStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    borderBottom: "1px solid #ddd",
-    fontWeight: 600,
-}
-const sourcesListStyle: React.CSSProperties = {
-    flex: 1,
-    overflowY: "auto",
-    padding: 4,
-}
-const sourceRowStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
-    borderBottom: "1px solid #eee",
-    fontSize: 13,
-}
-const sourceUrlStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: "#888",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-}
-const deleteBtnStyle: React.CSSProperties = {
-    padding: "3px 10px",
-    background: "#fff",
-    border: "1px solid #c33",
-    color: "#c33",
-    cursor: "pointer",
-    fontSize: 12,
-    borderRadius: 3,
-}
-const filterRowStyle: React.CSSProperties = {
-    display: "flex",
-    gap: 4,
-    padding: "6px 8px",
-    background: "#f3f3f3",
-    borderBottom: "1px solid #ddd",
-}
-const filterChipStyle = (active: boolean): React.CSSProperties => ({
-    padding: "3px 12px",
-    fontSize: 12,
-    border: "1px solid",
-    borderColor: active ? "#446" : "#bbb",
-    background: active ? "#446" : "#fff",
-    color: active ? "#fff" : "#333",
-    borderRadius: 12,
-    cursor: "pointer",
-})
-const subscribeRowStyle: React.CSSProperties = {
-    display: "flex",
-    gap: 8,
-    padding: "4px 8px",
-    background: "#1a1a1a",
-    color: "#fff",
-    fontSize: 12,
-    alignItems: "center",
-    borderTop: "1px solid #333",
-}
-const subscribeInputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: "4px 8px",
-    background: "#111",
-    border: "1px solid #444",
-    color: "#fff",
-    fontSize: 12,
-    minWidth: 0,
-}
-const pickerStyle: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    flex: 1,
-}
-const pickerRowStyle: React.CSSProperties = {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-}
-const pickerBtnStyle: React.CSSProperties = {
-    padding: "2px 8px",
-    background: "#446",
-    border: "1px solid #668",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 11,
-}
+import { Header } from "./app/Header"
+import { SubscribeBar } from "./app/SubscribeBar"
+import { FilterBar } from "./app/FilterBar"
+import { ItemList } from "./app/ItemList"
+import { SourcesModal } from "./app/SourcesModal"
+import { useArticleList } from "./app/useArticleList"
+import layout from "./app/layout.module.css"
 
 function formatRefreshSummary(results: RefreshResult[]): string {
     if (results.length === 0) return "no feeds to refresh"
@@ -243,56 +50,45 @@ function formatRefreshSummary(results: RefreshResult[]): string {
     return out
 }
 
-type Filter = "all" | "unread" | "starred"
-
 export function App(): React.ReactElement {
-    const [items, setItems] = React.useState<Item[] | null>(null)
-    const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
-    const [listLoading, setListLoading] = React.useState(false)
-    const [listError, setListError] = React.useState<string | null>(null)
+    const list = useArticleList()
+    const {
+        items,
+        listLoading,
+        listError,
+        filter,
+        selectedItem,
+        setFilter,
+        setSelectedItem,
+        loadItems,
+        onToggleRead,
+        onToggleStar,
+        onMarkAllRead,
+        onSelectNeighbor,
+        onOpenSelectedLink,
+    } = list
+
     const [refreshInFlight, setRefreshInFlight] = React.useState(false)
     const [refreshStatus, setRefreshStatus] = React.useState<string | null>(null)
     const [subscribeUrl, setSubscribeUrl] = React.useState("")
     const [subscribeInFlight, setSubscribeInFlight] = React.useState(false)
-    const [subscribeStatus, setSubscribeStatus] = React.useState<string | null>(null)
+    const [subscribeStatus, setSubscribeStatus] = React.useState<string | null>(
+        null
+    )
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
-    const [filter, setFilter] = React.useState<Filter>("all")
     const [sourcesPanel, setSourcesPanel] = React.useState<Source[] | null>(null)
-    const [deleteInFlight, setDeleteInFlight] = React.useState<number | null>(null)
+    const [deleteInFlight, setDeleteInFlight] = React.useState<number | null>(
+        null
+    )
 
     const cancelledRef = React.useRef(false)
-
-    const loadItems = React.useCallback(async () => {
-        setListLoading(true)
-        setListError(null)
-        try {
-            const list = await itemsApi.list({
-                limit: 50,
-                hasRead: filter === "unread" ? false : undefined,
-                starred: filter === "starred" ? true : undefined,
-            })
-            if (cancelledRef.current) return
-            setItems(list)
-            setSelectedItem(prev => {
-                if (prev && list.some(i => i.iid === prev.iid)) return prev
-                return list.length > 0 ? list[0] : null
-            })
-        } catch (e) {
-            if (cancelledRef.current) return
-            setListError(String((e as Error)?.message ?? e))
-        } finally {
-            if (!cancelledRef.current) setListLoading(false)
-        }
-    }, [filter])
-
     React.useEffect(() => {
         cancelledRef.current = false
-        loadItems()
         return () => {
             cancelledRef.current = true
         }
-    }, [loadItems])
+    }, [])
 
     React.useEffect(() => {
         const stop = startAutoRefresh({
@@ -306,7 +102,9 @@ export function App(): React.ReactElement {
                             : 0),
                     0
                 )
-                setRefreshStatus(`auto: ${results.length} checked · ${inserted} new`)
+                setRefreshStatus(
+                    `auto: ${results.length} checked · ${inserted} new`
+                )
                 void loadItems()
             },
             onError: e => {
@@ -315,56 +113,6 @@ export function App(): React.ReactElement {
         })
         return stop
     }, [loadItems])
-
-    const applyItemPatch = React.useCallback(
-        (iid: number, patch: Partial<Item>) => {
-            setItems(prev =>
-                prev ? prev.map(it => (it.iid === iid ? { ...it, ...patch } : it)) : prev
-            )
-            setSelectedItem(prev => (prev && prev.iid === iid ? { ...prev, ...patch } : prev))
-        },
-        []
-    )
-
-    const onToggleRead = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.hasRead
-        applyItemPatch(selectedItem.iid, { hasRead: next })
-        try {
-            await itemsApi.markRead(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { hasRead: !next })
-            console.error("[App] markRead failed", e)
-        }
-    }, [selectedItem, applyItemPatch])
-
-    const onToggleStar = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.starred
-        applyItemPatch(selectedItem.iid, { starred: next })
-        try {
-            await itemsApi.setStarred(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { starred: !next })
-            console.error("[App] setStarred failed", e)
-        }
-    }, [selectedItem, applyItemPatch])
-
-    const onMarkAllRead = React.useCallback(async () => {
-        if (!items) return
-        const unread = items.filter(i => !i.hasRead)
-        if (unread.length === 0) return
-        setItems(prev => (prev ? prev.map(it => ({ ...it, hasRead: true })) : prev))
-        setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
-        const results = await Promise.allSettled(
-            unread.map(it => itemsApi.markRead(it.iid, true))
-        )
-        const failed = results.filter(r => r.status === "rejected").length
-        if (failed > 0) {
-            console.error(`[App] mark all read: ${failed} of ${unread.length} failed`)
-            await loadItems()
-        }
-    }, [items, loadItems])
 
     const finalizeSubscribe = React.useCallback(
         async (feed: DiscoveredFeed) => {
@@ -407,7 +155,9 @@ export function App(): React.ReactElement {
             const kind = (err as { kind?: string }).kind
             const message = (err as { message?: string }).message ?? String(e)
             setSubscribeStatus(
-                kind ? `subscribe failed (${kind}): ${message}` : `subscribe failed: ${message}`
+                kind
+                    ? `subscribe failed (${kind}): ${message}`
+                    : `subscribe failed: ${message}`
             )
         } finally {
             if (!cancelledRef.current) setSubscribeInFlight(false)
@@ -432,6 +182,11 @@ export function App(): React.ReactElement {
         [finalizeSubscribe]
     )
 
+    const onCancelPick = React.useCallback(() => {
+        setPicker(null)
+        setSubscribeStatus(null)
+    }, [])
+
     const onRefresh = React.useCallback(async () => {
         if (refreshInFlight) return
         setRefreshInFlight(true)
@@ -445,7 +200,9 @@ export function App(): React.ReactElement {
             await loadItems()
         } catch (e) {
             if (cancelledRef.current) return
-            setRefreshStatus("refresh failed: " + String((e as Error)?.message ?? e))
+            setRefreshStatus(
+                "refresh failed: " + String((e as Error)?.message ?? e)
+            )
         } finally {
             if (!cancelledRef.current) setRefreshInFlight(false)
         }
@@ -453,12 +210,14 @@ export function App(): React.ReactElement {
 
     const openSourcesPanel = React.useCallback(async () => {
         try {
-            const list = await sourcesApi.list()
+            const slist = await sourcesApi.list()
             if (cancelledRef.current) return
-            setSourcesPanel(list)
+            setSourcesPanel(slist)
         } catch (e) {
             console.error("[App] sources list failed", e)
-            window.alert("Load sources failed: " + String((e as Error)?.message ?? e))
+            window.alert(
+                "Load sources failed: " + String((e as Error)?.message ?? e)
+            )
         }
     }, [])
 
@@ -473,11 +232,15 @@ export function App(): React.ReactElement {
             try {
                 await sourcesApi.delete(s.sid)
                 if (cancelledRef.current) return
-                setSourcesPanel(prev => (prev ? prev.filter(x => x.sid !== s.sid) : prev))
+                setSourcesPanel(prev =>
+                    prev ? prev.filter(x => x.sid !== s.sid) : prev
+                )
                 await loadItems()
             } catch (e) {
                 console.error("[App] delete source failed", e)
-                window.alert("Delete failed: " + String((e as Error)?.message ?? e))
+                window.alert(
+                    "Delete failed: " + String((e as Error)?.message ?? e)
+                )
             } finally {
                 if (!cancelledRef.current) setDeleteInFlight(null)
             }
@@ -485,32 +248,12 @@ export function App(): React.ReactElement {
         [deleteInFlight, loadItems]
     )
 
-    const onSelectNeighbor = React.useCallback(
-        (offset: number) => {
-            if (!items || items.length === 0) return
-            const idx = selectedItem
-                ? items.findIndex(i => i.iid === selectedItem.iid)
-                : -1
-            const nextIdx = Math.max(
-                0,
-                Math.min(items.length - 1, (idx < 0 ? 0 : idx) + offset)
-            )
-            if (nextIdx !== idx) setSelectedItem(items[nextIdx])
-        },
-        [items, selectedItem]
-    )
-
-    const onOpenSelectedLink = React.useCallback(() => {
-        if (!selectedItem?.link) return
-        openExternal(selectedItem.link).catch(err =>
-            console.error("[App] openExternal failed", err)
-        )
-    }, [selectedItem])
-
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
-            window.alert("Open link failed: " + String((err as Error)?.message ?? err))
+            window.alert(
+                "Open link failed: " + String((err as Error)?.message ?? err)
+            )
         })
     }, [])
 
@@ -557,9 +300,9 @@ export function App(): React.ReactElement {
     React.useEffect(() => {
         function onKey(e: KeyboardEvent): void {
             if (e.ctrlKey || e.metaKey || e.altKey) return
-            // Skip while user is typing in an input/textarea.
             const tgt = e.target as HTMLElement | null
-            if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return
+            if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA"))
+                return
             // While the Sources modal is open, leave shortcuts inert so Esc/Tab
             // behave normally for the modal's own buttons.
             if (sourcesPanel) return
@@ -568,184 +311,57 @@ export function App(): React.ReactElement {
         window.addEventListener("keydown", onKey)
         return () => window.removeEventListener("keydown", onKey)
     }, [handleShortcut, sourcesPanel])
+
     const onCtxMenu = React.useCallback(
-        (d: { x: number; y: number; text: string | null; href: string | null }) => {
+        (d: {
+            x: number
+            y: number
+            text: string | null
+            href: string | null
+        }) => {
             console.log("[App] ctxmenu", d)
         },
         []
     )
 
+    const hasUnread = !!items && items.some(i => !i.hasRead)
+
     return (
-        <div style={appStyle}>
-            <div style={headerStyle}>
-                <span style={{ flex: 1 }}>
-                    fluent-reader{items ? ` — ${items.length} items` : ""}
-                    {selectedItem ? ` — ${selectedItem.title}` : ""}
-                    {refreshStatus && <span style={statusStyle}>{refreshStatus}</span>}
-                </span>
-                <button
-                    style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
-                    disabled={!selectedItem}
-                    onClick={onToggleRead}>
-                    {selectedItem?.hasRead ? "Mark unread" : "Mark read"}
-                </button>
-                <button
-                    style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
-                    disabled={!selectedItem}
-                    onClick={onToggleStar}>
-                    {selectedItem?.starred ? "Unstar" : "Star"}
-                </button>
-                <button
-                    style={
-                        items && items.some(i => !i.hasRead)
-                            ? headerBtnStyle
-                            : headerBtnDisabledStyle
-                    }
-                    disabled={!items || !items.some(i => !i.hasRead)}
-                    onClick={onMarkAllRead}>
-                    Mark all read
-                </button>
-                <button
-                    style={refreshInFlight ? headerBtnDisabledStyle : headerBtnStyle}
-                    disabled={refreshInFlight}
-                    onClick={onRefresh}>
-                    {refreshInFlight ? "Refreshing…" : "Refresh feeds"}
-                </button>
-                <button style={headerBtnStyle} onClick={openSourcesPanel}>
-                    Sources
-                </button>
-                <button
-                    style={selectedItem ? headerBtnStyle : headerBtnDisabledStyle}
-                    disabled={!selectedItem}
-                    onClick={() => setRemount(n => n + 1)}>
-                    Remount iframe
-                </button>
+        <div className={layout.app}>
+            <Header
+                itemsCount={items ? items.length : null}
+                selectedItem={selectedItem}
+                refreshInFlight={refreshInFlight}
+                refreshStatus={refreshStatus}
+                hasUnread={hasUnread}
+                onToggleRead={onToggleRead}
+                onToggleStar={onToggleStar}
+                onMarkAllRead={onMarkAllRead}
+                onRefresh={onRefresh}
+                onOpenSources={openSourcesPanel}
+                onRemountIframe={() => setRemount(n => n + 1)}
+            />
+            <SubscribeBar
+                url={subscribeUrl}
+                inFlight={subscribeInFlight}
+                status={subscribeStatus}
+                picker={picker}
+                onChangeUrl={setSubscribeUrl}
+                onSubmit={onSubscribe}
+                onPick={onPickFeed}
+                onCancelPick={onCancelPick}
+            />
+            <FilterBar filter={filter} onChange={setFilter} />
+            <div className={layout.body}>
+                {renderBody()}
             </div>
-            <div style={subscribeRowStyle}>
-                {picker ? (
-                    <div style={pickerStyle}>
-                        {picker.map((f, i) => (
-                            <div key={`${f.url}-${i}`} style={pickerRowStyle}>
-                                <button
-                                    style={pickerBtnStyle}
-                                    disabled={subscribeInFlight}
-                                    onClick={() => onPickFeed(f)}>
-                                    Add
-                                </button>
-                                <span
-                                    style={{
-                                        flex: 1,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                    }}>
-                                    {f.title ? `${f.title} — ` : ""}
-                                    <span style={{ color: "#aaa" }}>{f.url}</span>
-                                </span>
-                            </div>
-                        ))}
-                        <div style={pickerRowStyle}>
-                            <button
-                                style={pickerBtnStyle}
-                                onClick={() => {
-                                    setPicker(null)
-                                    setSubscribeStatus(null)
-                                }}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <span>Add feed:</span>
-                        <input
-                            style={subscribeInputStyle}
-                            type="text"
-                            placeholder="https://example.com or https://example.com/feed.xml"
-                            value={subscribeUrl}
-                            onChange={e => setSubscribeUrl(e.target.value)}
-                            onKeyDown={e => {
-                                if (e.key === "Enter") onSubscribe()
-                            }}
-                            disabled={subscribeInFlight}
-                        />
-                        <button
-                            style={
-                                subscribeInFlight || !subscribeUrl.trim()
-                                    ? headerBtnDisabledStyle
-                                    : headerBtnStyle
-                            }
-                            disabled={subscribeInFlight || !subscribeUrl.trim()}
-                            onClick={onSubscribe}>
-                            {subscribeInFlight ? "…" : "Add"}
-                        </button>
-                    </>
-                )}
-                {subscribeStatus && !picker && (
-                    <span style={statusStyle}>{subscribeStatus}</span>
-                )}
-            </div>
-            <div style={filterRowStyle}>
-                <button
-                    style={filterChipStyle(filter === "all")}
-                    onClick={() => setFilter("all")}>
-                    All
-                </button>
-                <button
-                    style={filterChipStyle(filter === "unread")}
-                    onClick={() => setFilter("unread")}>
-                    Unread
-                </button>
-                <button
-                    style={filterChipStyle(filter === "starred")}
-                    onClick={() => setFilter("starred")}>
-                    Starred
-                </button>
-            </div>
-            <div style={bodyStyle}>{renderBody()}</div>
             {sourcesPanel && (
-                <div style={overlayStyle} onClick={() => setSourcesPanel(null)}>
-                    <div
-                        style={sourcesPanelStyle}
-                        onClick={e => e.stopPropagation()}>
-                        <div style={sourcesHeaderStyle}>
-                            <span style={{ flex: 1 }}>
-                                Sources ({sourcesPanel.length})
-                            </span>
-                            <button
-                                style={headerBtnStyle}
-                                onClick={() => setSourcesPanel(null)}>
-                                Close
-                            </button>
-                        </div>
-                        <div style={sourcesListStyle}>
-                            {sourcesPanel.length === 0 ? (
-                                <div style={{ padding: 24, textAlign: "center", color: "#888" }}>
-                                    No sources yet. Subscribe to one from the bar.
-                                </div>
-                            ) : (
-                                sourcesPanel.map(s => (
-                                    <div key={s.sid} style={sourceRowStyle}>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontWeight: 500 }}>{s.name}</div>
-                                            <div style={sourceUrlStyle}>{s.url}</div>
-                                        </div>
-                                        <button
-                                            style={
-                                                deleteInFlight === s.sid
-                                                    ? { ...deleteBtnStyle, opacity: 0.5 }
-                                                    : deleteBtnStyle
-                                            }
-                                            disabled={deleteInFlight === s.sid}
-                                            onClick={() => onDeleteSource(s)}>
-                                            {deleteInFlight === s.sid ? "…" : "Delete"}
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <SourcesModal
+                    sources={sourcesPanel}
+                    deleteInFlight={deleteInFlight}
+                    onClose={() => setSourcesPanel(null)}
+                    onDelete={onDeleteSource}
+                />
             )}
         </div>
     )
@@ -753,26 +369,24 @@ export function App(): React.ReactElement {
     function renderBody(): React.ReactElement {
         if (listError) {
             return (
-                <div style={errorPaneStyle}>
+                <div className={`${layout.centered} ${layout.error}`}>
                     <div>Failed to load items</div>
-                    <div style={{ fontSize: 11 }}>{listError}</div>
-                    <button style={headerBtnStyle} onClick={loadItems}>
+                    <div className={layout.errorDetail}>{listError}</div>
+                    <button className={layout.retryBtn} onClick={loadItems}>
                         Retry
                     </button>
                 </div>
             )
         }
         if (listLoading && items === null) {
-            return <div style={centeredStyle}>Loading…</div>
+            return <div className={layout.centered}>Loading…</div>
         }
         if (items && items.length === 0) {
             return (
-                <div style={centeredStyle}>
-                    <div>
-                        <div style={{ marginBottom: 12 }}>No items yet.</div>
-                        <div style={{ fontSize: 11, color: "#666" }}>
-                            Subscribe to a feed in the bar above.
-                        </div>
+                <div className={layout.centered}>
+                    <div>No items yet.</div>
+                    <div className={layout.emptyHint}>
+                        Subscribe to a feed in the bar above.
                     </div>
                 </div>
             )
@@ -780,28 +394,12 @@ export function App(): React.ReactElement {
         if (items && items.length > 0) {
             return (
                 <>
-                    <div style={listStyle}>
-                        {items.map(it => (
-                            <div
-                                key={it.iid}
-                                style={listRowStyle(selectedItem?.iid === it.iid, it.hasRead)}
-                                onClick={() => setSelectedItem(it)}>
-                                <div style={{ fontWeight: it.hasRead ? 400 : 600 }}>
-                                    {it.title}
-                                    {it.starred && <span style={starIconStyle}>★</span>}
-                                </div>
-                                <div
-                                    style={{
-                                        fontSize: 11,
-                                        color: "#888",
-                                        marginTop: 2,
-                                    }}>
-                                    {new Date(it.dateMs).toLocaleString()}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div style={articlePaneStyle}>
+                    <ItemList
+                        items={items}
+                        selectedIid={selectedItem?.iid ?? null}
+                        onSelect={setSelectedItem}
+                    />
+                    <div className={layout.articlePane}>
                         {selectedItem && (
                             <ArticleView
                                 key={`${selectedItem.iid}@${remount}`}
@@ -816,6 +414,6 @@ export function App(): React.ReactElement {
                 </>
             )
         }
-        return <div style={centeredStyle}>Loading…</div>
+        return <div className={layout.centered}>Loading…</div>
     }
 }

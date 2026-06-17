@@ -1,0 +1,43 @@
+.list {
+    width: 280px;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.row {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    background: transparent;
+    font-size: 13px;
+    color: #222;
+}
+
+.row.read {
+    color: #999;
+}
+
+.row.selected {
+    background: #dde7f7;
+}
+
+.title {
+    font-weight: 600;
+}
+
+.title.read {
+    font-weight: 400;
+}
+
+.star {
+    margin-left: 6px;
+    color: #e6b800;
+    font-size: 12px;
+}
+
+.date {
+    font-size: 11px;
+    color: #888;
+    margin-top: 2px;
+}

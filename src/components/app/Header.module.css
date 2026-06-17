@@ -1,0 +1,40 @@
+.bar {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    background: #222;
+    color: #fff;
+    font-size: 13px;
+    align-items: center;
+}
+
+.title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status {
+    font-size: 11px;
+    color: #bbb;
+    margin-left: 8px;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn {
+    padding: 4px 10px;
+    background: #444;
+    border: 1px solid #666;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

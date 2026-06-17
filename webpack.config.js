@@ -37,7 +37,21 @@ module.exports = {
             },
             {
                 test: /\.css$/,
-                use: [MiniCssExtractPlugin.loader, "css-loader"],
+                use: [
+                    MiniCssExtractPlugin.loader,
+                    {
+                        loader: "css-loader",
+                        options: {
+                            modules: {
+                                auto: /\.module\.css$/,
+                                namedExport: false,
+                                exportLocalsConvention: "as-is",
+                                localIdentName:
+                                    "[name]__[local]--[hash:base64:5]",
+                            },
+                        },
+                    },
+                ],
             },
             {
                 test: /fixture\.html$/,
