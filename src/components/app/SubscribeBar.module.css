@@ -1,0 +1,82 @@
+.bar {
+    display: flex;
+    gap: 8px;
+    padding: 4px 8px;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 12px;
+    align-items: center;
+    border-top: 1px solid #333;
+}
+
+.input {
+    flex: 1;
+    padding: 4px 8px;
+    background: #111;
+    border: 1px solid #444;
+    color: #fff;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.btn {
+    padding: 4px 10px;
+    background: #444;
+    border: 1px solid #666;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.status {
+    font-size: 11px;
+    color: #bbb;
+    margin-left: 8px;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.picker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.pickerRow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.pickerBtn {
+    padding: 2px 8px;
+    background: #446;
+    border: 1px solid #668;
+    color: #fff;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.pickerBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pickerLabel {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pickerUrl {
+    color: #aaa;
+}

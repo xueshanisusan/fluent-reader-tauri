@@ -1,0 +1,23 @@
+.bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    background: #f3f3f3;
+    border-bottom: 1px solid #ddd;
+}
+
+.chip {
+    padding: 3px 12px;
+    font-size: 12px;
+    border: 1px solid #bbb;
+    background: #fff;
+    color: #333;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.chip.active {
+    border-color: #446;
+    background: #446;
+    color: #fff;
+}
