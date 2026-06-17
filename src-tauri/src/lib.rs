@@ -3,6 +3,7 @@ pub mod db;
 pub mod feeds;
 pub mod models;
 pub mod net;
+pub mod opml;
 pub mod repo;
 
 use commands::AppState;
@@ -49,6 +50,8 @@ pub fn run() {
             net::net_fetch,
             feeds::sources_ingest,
             feeds::feeds_discover,
+            opml::feeds_import_opml,
+            opml::feeds_export_opml,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

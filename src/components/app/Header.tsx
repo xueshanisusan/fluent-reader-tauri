@@ -8,11 +8,14 @@ export interface HeaderProps {
     refreshInFlight: boolean
     refreshStatus: string | null
     hasUnread: boolean
+    opmlBusy: boolean
     onToggleRead: () => void
     onToggleStar: () => void
     onMarkAllRead: () => void
     onRefresh: () => void
     onRemountIframe: () => void
+    onImportOpml: () => void
+    onExportOpml: () => void
 }
 
 export function Header(props: HeaderProps): React.ReactElement {
@@ -22,11 +25,14 @@ export function Header(props: HeaderProps): React.ReactElement {
         refreshInFlight,
         refreshStatus,
         hasUnread,
+        opmlBusy,
         onToggleRead,
         onToggleStar,
         onMarkAllRead,
         onRefresh,
         onRemountIframe,
+        onImportOpml,
+        onExportOpml,
     } = props
 
     return (
@@ -61,6 +67,18 @@ export function Header(props: HeaderProps): React.ReactElement {
                 disabled={refreshInFlight}
                 onClick={onRefresh}>
                 {refreshInFlight ? "Refreshing…" : "Refresh feeds"}
+            </button>
+            <button
+                className={styles.btn}
+                disabled={opmlBusy}
+                onClick={onImportOpml}>
+                Import OPML
+            </button>
+            <button
+                className={styles.btn}
+                disabled={opmlBusy}
+                onClick={onExportOpml}>
+                Export OPML
             </button>
             <button
                 className={styles.btn}
