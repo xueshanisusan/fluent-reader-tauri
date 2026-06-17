@@ -4,15 +4,21 @@ import { openExternal } from "../../scripts/shell-bridge"
 
 export type Filter = "all" | "unread" | "starred"
 
+export interface UseArticleListOptions {
+    sourceId: number | null
+}
+
 export interface UseArticleList {
     items: Item[] | null
     listLoading: boolean
     listError: string | null
     filter: Filter
     selectedItem: Item | null
+    unreadCounts: ReadonlyMap<number, number>
     setFilter: (f: Filter) => void
     setSelectedItem: (it: Item | null) => void
     loadItems: () => Promise<void>
+    reloadUnreadCounts: () => Promise<void>
     applyItemPatch: (iid: number, patch: Partial<Item>) => void
     onToggleRead: () => Promise<void>
     onToggleStar: () => Promise<void>
@@ -21,14 +27,30 @@ export interface UseArticleList {
     onOpenSelectedLink: () => void
 }
 
-export function useArticleList(): UseArticleList {
+export function useArticleList(opts: UseArticleListOptions): UseArticleList {
+    const { sourceId } = opts
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
     const [listLoading, setListLoading] = React.useState(false)
     const [listError, setListError] = React.useState<string | null>(null)
     const [filter, setFilter] = React.useState<Filter>("all")
+    const [unreadCounts, setUnreadCounts] = React.useState<
+        ReadonlyMap<number, number>
+    >(() => new Map())
 
     const cancelledRef = React.useRef(false)
+
+    const reloadUnreadCounts = React.useCallback(async () => {
+        try {
+            const counts = await itemsApi.unreadCounts()
+            if (cancelledRef.current) return
+            const next = new Map<number, number>()
+            for (const c of counts) next.set(c.sourceId, c.count)
+            setUnreadCounts(next)
+        } catch (e) {
+            console.error("[useArticleList] unreadCounts failed", e)
+        }
+    }, [])
 
     const loadItems = React.useCallback(async () => {
         setListLoading(true)
@@ -36,6 +58,7 @@ export function useArticleList(): UseArticleList {
         try {
             const list = await itemsApi.list({
                 limit: 50,
+                sourceId: sourceId ?? undefined,
                 hasRead: filter === "unread" ? false : undefined,
                 starred: filter === "starred" ? true : undefined,
             })
@@ -45,13 +68,14 @@ export function useArticleList(): UseArticleList {
                 if (prev && list.some(i => i.iid === prev.iid)) return prev
                 return list.length > 0 ? list[0] : null
             })
+            void reloadUnreadCounts()
         } catch (e) {
             if (cancelledRef.current) return
             setListError(String((e as Error)?.message ?? e))
         } finally {
             if (!cancelledRef.current) setListLoading(false)
         }
-    }, [filter])
+    }, [filter, sourceId, reloadUnreadCounts])
 
     React.useEffect(() => {
         cancelledRef.current = false
@@ -60,6 +84,20 @@ export function useArticleList(): UseArticleList {
             cancelledRef.current = true
         }
     }, [loadItems])
+
+    const bumpUnread = React.useCallback(
+        (sid: number, delta: number) => {
+            setUnreadCounts(prev => {
+                const next = new Map(prev)
+                const cur = next.get(sid) ?? 0
+                const after = Math.max(0, cur + delta)
+                if (after === 0) next.delete(sid)
+                else next.set(sid, after)
+                return next
+            })
+        },
+        []
+    )
 
     const applyItemPatch = React.useCallback(
         (iid: number, patch: Partial<Item>) => {
@@ -78,14 +116,17 @@ export function useArticleList(): UseArticleList {
     const onToggleRead = React.useCallback(async () => {
         if (!selectedItem) return
         const next = !selectedItem.hasRead
+        const delta = next ? -1 : +1
         applyItemPatch(selectedItem.iid, { hasRead: next })
+        bumpUnread(selectedItem.sourceId, delta)
         try {
             await itemsApi.markRead(selectedItem.iid, next)
         } catch (e) {
             applyItemPatch(selectedItem.iid, { hasRead: !next })
+            bumpUnread(selectedItem.sourceId, -delta)
             console.error("[useArticleList] markRead failed", e)
         }
-    }, [selectedItem, applyItemPatch])
+    }, [selectedItem, applyItemPatch, bumpUnread])
 
     const onToggleStar = React.useCallback(async () => {
         if (!selectedItem) return
@@ -103,10 +144,18 @@ export function useArticleList(): UseArticleList {
         if (!items) return
         const unread = items.filter(i => !i.hasRead)
         if (unread.length === 0) return
+        const sourceDeltas = new Map<number, number>()
+        for (const it of unread) {
+            sourceDeltas.set(
+                it.sourceId,
+                (sourceDeltas.get(it.sourceId) ?? 0) + 1
+            )
+        }
         setItems(prev =>
             prev ? prev.map(it => ({ ...it, hasRead: true })) : prev
         )
         setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
+        for (const [sid, n] of sourceDeltas) bumpUnread(sid, -n)
         const results = await Promise.allSettled(
             unread.map(it => itemsApi.markRead(it.iid, true))
         )
@@ -117,7 +166,7 @@ export function useArticleList(): UseArticleList {
             )
             await loadItems()
         }
-    }, [items, loadItems])
+    }, [items, loadItems, bumpUnread])
 
     const onSelectNeighbor = React.useCallback(
         (offset: number) => {
@@ -147,9 +196,11 @@ export function useArticleList(): UseArticleList {
         listError,
         filter,
         selectedItem,
+        unreadCounts,
         setFilter,
         setSelectedItem,
         loadItems,
+        reloadUnreadCounts,
         applyItemPatch,
         onToggleRead,
         onToggleStar,

@@ -12,7 +12,6 @@ export interface HeaderProps {
     onToggleStar: () => void
     onMarkAllRead: () => void
     onRefresh: () => void
-    onOpenSources: () => void
     onRemountIframe: () => void
 }
 
@@ -27,7 +26,6 @@ export function Header(props: HeaderProps): React.ReactElement {
         onToggleStar,
         onMarkAllRead,
         onRefresh,
-        onOpenSources,
         onRemountIframe,
     } = props
 
@@ -63,9 +61,6 @@ export function Header(props: HeaderProps): React.ReactElement {
                 disabled={refreshInFlight}
                 onClick={onRefresh}>
                 {refreshInFlight ? "Refreshing…" : "Refresh feeds"}
-            </button>
-            <button className={styles.btn} onClick={onOpenSources}>
-                Sources
             </button>
             <button
                 className={styles.btn}

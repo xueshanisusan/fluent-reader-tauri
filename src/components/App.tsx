@@ -1,7 +1,12 @@
 import * as React from "react"
 import { ArticleView } from "./article/ArticleView"
 import { openExternal } from "../scripts/shell-bridge"
-import { sources as sourcesApi, type Source } from "../scripts/db-bridge"
+import {
+    groups as groupsApi,
+    sources as sourcesApi,
+    type Group,
+    type Source,
+} from "../scripts/db-bridge"
 import {
     refreshAll,
     isRefreshSuccess,
@@ -13,7 +18,7 @@ import { Header } from "./app/Header"
 import { SubscribeBar } from "./app/SubscribeBar"
 import { FilterBar } from "./app/FilterBar"
 import { ItemList } from "./app/ItemList"
-import { SourcesModal } from "./app/SourcesModal"
+import { Sidebar } from "./app/Sidebar"
 import { useArticleList } from "./app/useArticleList"
 import layout from "./app/layout.module.css"
 
@@ -51,16 +56,27 @@ function formatRefreshSummary(results: RefreshResult[]): string {
 }
 
 export function App(): React.ReactElement {
-    const list = useArticleList()
+    const [sources, setSources] = React.useState<Source[]>([])
+    const [groups, setGroups] = React.useState<Group[]>([])
+    const [expandedGroups, setExpandedGroups] = React.useState<
+        ReadonlySet<number>
+    >(() => new Set())
+    const [selectedSourceId, setSelectedSourceId] = React.useState<
+        number | null
+    >(null)
+
+    const list = useArticleList({ sourceId: selectedSourceId })
     const {
         items,
         listLoading,
         listError,
         filter,
         selectedItem,
+        unreadCounts,
         setFilter,
         setSelectedItem,
         loadItems,
+        reloadUnreadCounts,
         onToggleRead,
         onToggleStar,
         onMarkAllRead,
@@ -77,10 +93,6 @@ export function App(): React.ReactElement {
     )
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
-    const [sourcesPanel, setSourcesPanel] = React.useState<Source[] | null>(null)
-    const [deleteInFlight, setDeleteInFlight] = React.useState<number | null>(
-        null
-    )
 
     const cancelledRef = React.useRef(false)
     React.useEffect(() => {
@@ -89,6 +101,27 @@ export function App(): React.ReactElement {
             cancelledRef.current = true
         }
     }, [])
+
+    const loadSourcesAndGroups = React.useCallback(async () => {
+        try {
+            const [srcList, grpList] = await Promise.all([
+                sourcesApi.list(),
+                groupsApi.list(),
+            ])
+            if (cancelledRef.current) return
+            setSources(srcList)
+            setGroups(grpList)
+            setExpandedGroups(
+                new Set(grpList.filter(g => g.expanded).map(g => g.gid))
+            )
+        } catch (e) {
+            console.error("[App] load sources/groups failed", e)
+        }
+    }, [])
+
+    React.useEffect(() => {
+        loadSourcesAndGroups()
+    }, [loadSourcesAndGroups])
 
     React.useEffect(() => {
         const stop = startAutoRefresh({
@@ -129,9 +162,10 @@ export function App(): React.ReactElement {
             setSubscribeStatus(`${feed.url} — ${summary}`)
             setSubscribeUrl("")
             setPicker(null)
+            await loadSourcesAndGroups()
             await loadItems()
         },
-        [loadItems]
+        [loadItems, loadSourcesAndGroups]
     )
 
     const onSubscribe = React.useCallback(async () => {
@@ -192,7 +226,6 @@ export function App(): React.ReactElement {
         setRefreshInFlight(true)
         setRefreshStatus("refreshing…")
         try {
-            const sources = await sourcesApi.list()
             const sids = sources.map(s => s.sid)
             const results = await refreshAll(sids)
             if (cancelledRef.current) return
@@ -206,46 +239,70 @@ export function App(): React.ReactElement {
         } finally {
             if (!cancelledRef.current) setRefreshInFlight(false)
         }
-    }, [refreshInFlight, loadItems])
+    }, [refreshInFlight, loadItems, sources])
 
-    const openSourcesPanel = React.useCallback(async () => {
-        try {
-            const slist = await sourcesApi.list()
-            if (cancelledRef.current) return
-            setSourcesPanel(slist)
-        } catch (e) {
-            console.error("[App] sources list failed", e)
-            window.alert(
-                "Load sources failed: " + String((e as Error)?.message ?? e)
-            )
-        }
+    const onSelectSource = React.useCallback((sid: number | null) => {
+        setSelectedSourceId(sid)
     }, [])
+
+    const onToggleGroup = React.useCallback(
+        async (gid: number, expanded: boolean) => {
+            setExpandedGroups(prev => {
+                const next = new Set(prev)
+                if (expanded) next.add(gid)
+                else next.delete(gid)
+                return next
+            })
+            try {
+                await groupsApi.setExpanded(gid, expanded)
+            } catch (e) {
+                console.error("[App] setExpanded failed", e)
+            }
+        },
+        []
+    )
+
+    const onRenameSource = React.useCallback(
+        async (sid: number, name: string) => {
+            const prev = sources.find(s => s.sid === sid)
+            if (!prev || prev.name === name) return
+            setSources(p => p.map(s => (s.sid === sid ? { ...s, name } : s)))
+            try {
+                await sourcesApi.rename(sid, name)
+            } catch (e) {
+                console.error("[App] rename source failed", e)
+                setSources(p =>
+                    p.map(s => (s.sid === sid ? { ...s, name: prev.name } : s))
+                )
+                window.alert(
+                    "Rename failed: " + String((e as Error)?.message ?? e)
+                )
+            }
+        },
+        [sources]
+    )
 
     const onDeleteSource = React.useCallback(
         async (s: Source) => {
-            if (deleteInFlight !== null) return
             const ok = window.confirm(
                 `Delete "${s.name}"?\nAll items from this feed will also be removed.`
             )
             if (!ok) return
-            setDeleteInFlight(s.sid)
             try {
                 await sourcesApi.delete(s.sid)
                 if (cancelledRef.current) return
-                setSourcesPanel(prev =>
-                    prev ? prev.filter(x => x.sid !== s.sid) : prev
-                )
+                setSources(prev => prev.filter(x => x.sid !== s.sid))
+                if (selectedSourceId === s.sid) setSelectedSourceId(null)
                 await loadItems()
+                await reloadUnreadCounts()
             } catch (e) {
                 console.error("[App] delete source failed", e)
                 window.alert(
                     "Delete failed: " + String((e as Error)?.message ?? e)
                 )
-            } finally {
-                if (!cancelledRef.current) setDeleteInFlight(null)
             }
         },
-        [deleteInFlight, loadItems]
+        [selectedSourceId, loadItems, reloadUnreadCounts]
     )
 
     const onLink = React.useCallback((url: string) => {
@@ -303,14 +360,11 @@ export function App(): React.ReactElement {
             const tgt = e.target as HTMLElement | null
             if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA"))
                 return
-            // While the Sources modal is open, leave shortcuts inert so Esc/Tab
-            // behave normally for the modal's own buttons.
-            if (sourcesPanel) return
             if (handleShortcut(e.key)) e.preventDefault()
         }
         window.addEventListener("keydown", onKey)
         return () => window.removeEventListener("keydown", onKey)
-    }, [handleShortcut, sourcesPanel])
+    }, [handleShortcut])
 
     const onCtxMenu = React.useCallback(
         (d: {
@@ -338,7 +392,6 @@ export function App(): React.ReactElement {
                 onToggleStar={onToggleStar}
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
-                onOpenSources={openSourcesPanel}
                 onRemountIframe={() => setRemount(n => n + 1)}
             />
             <SubscribeBar
@@ -353,16 +406,19 @@ export function App(): React.ReactElement {
             />
             <FilterBar filter={filter} onChange={setFilter} />
             <div className={layout.body}>
+                <Sidebar
+                    sources={sources}
+                    groups={groups}
+                    unreadCounts={unreadCounts}
+                    selectedSourceId={selectedSourceId}
+                    expandedGroups={expandedGroups}
+                    onSelectSource={onSelectSource}
+                    onToggleGroup={onToggleGroup}
+                    onRenameSource={onRenameSource}
+                    onDeleteSource={onDeleteSource}
+                />
                 {renderBody()}
             </div>
-            {sourcesPanel && (
-                <SourcesModal
-                    sources={sourcesPanel}
-                    deleteInFlight={deleteInFlight}
-                    onClose={() => setSourcesPanel(null)}
-                    onDelete={onDeleteSource}
-                />
-            )}
         </div>
     )
 
@@ -386,7 +442,9 @@ export function App(): React.ReactElement {
                 <div className={layout.centered}>
                     <div>No items yet.</div>
                     <div className={layout.emptyHint}>
-                        Subscribe to a feed in the bar above.
+                        {sources.length === 0
+                            ? "Subscribe to a feed in the bar above."
+                            : "Try Refresh feeds, change filter, or pick a different source."}
                     </div>
                 </div>
             )
