@@ -93,7 +93,9 @@ export function App(): React.ReactElement {
     )
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
+    const [opmlBusy, setOpmlBusy] = React.useState(false)
 
+    const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cancelledRef = React.useRef(false)
     React.useEffect(() => {
         cancelledRef.current = false
@@ -305,6 +307,77 @@ export function App(): React.ReactElement {
         [selectedSourceId, loadItems, reloadUnreadCounts]
     )
 
+    const onImportOpml = React.useCallback(() => {
+        fileInputRef.current?.click()
+    }, [])
+
+    const onOpmlFileChosen = React.useCallback(
+        async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0]
+            e.target.value = ""
+            if (!file) return
+            setOpmlBusy(true)
+            setRefreshStatus("importing OPML…")
+            try {
+                const xml = await file.text()
+                const summary = await feedsApi.importOpml(xml)
+                if (cancelledRef.current) return
+                setRefreshStatus(
+                    `OPML: ${summary.sourcesAdded} added · ${summary.sourcesSkipped} skipped · ${summary.groupsCreated} new group${
+                        summary.groupsCreated === 1 ? "" : "s"
+                    }`
+                )
+                await loadSourcesAndGroups()
+                await loadItems()
+            } catch (err) {
+                if (cancelledRef.current) return
+                const er = err as { kind?: string; message?: string } | Error
+                const kind = (er as { kind?: string }).kind
+                const message = (er as { message?: string }).message ?? String(err)
+                setRefreshStatus(
+                    kind
+                        ? `OPML import failed (${kind}): ${message}`
+                        : `OPML import failed: ${message}`
+                )
+            } finally {
+                if (!cancelledRef.current) setOpmlBusy(false)
+            }
+        },
+        [loadItems, loadSourcesAndGroups]
+    )
+
+    const onExportOpml = React.useCallback(async () => {
+        setOpmlBusy(true)
+        setRefreshStatus("exporting OPML…")
+        try {
+            const xml = await feedsApi.exportOpml()
+            if (cancelledRef.current) return
+            const blob = new Blob([xml], { type: "application/xml" })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement("a")
+            a.href = url
+            a.download = "subscriptions.opml"
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            // Revoke after a tick so the browser has time to start the download.
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+            setRefreshStatus(`OPML exported · ${xml.length} bytes`)
+        } catch (err) {
+            if (cancelledRef.current) return
+            const er = err as { kind?: string; message?: string } | Error
+            const kind = (er as { kind?: string }).kind
+            const message = (er as { message?: string }).message ?? String(err)
+            setRefreshStatus(
+                kind
+                    ? `OPML export failed (${kind}): ${message}`
+                    : `OPML export failed: ${message}`
+            )
+        } finally {
+            if (!cancelledRef.current) setOpmlBusy(false)
+        }
+    }, [])
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
@@ -388,11 +461,21 @@ export function App(): React.ReactElement {
                 refreshInFlight={refreshInFlight}
                 refreshStatus={refreshStatus}
                 hasUnread={hasUnread}
+                opmlBusy={opmlBusy}
                 onToggleRead={onToggleRead}
                 onToggleStar={onToggleStar}
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
                 onRemountIframe={() => setRemount(n => n + 1)}
+                onImportOpml={onImportOpml}
+                onExportOpml={onExportOpml}
+            />
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".opml,.xml,text/xml,application/xml"
+                hidden
+                onChange={onOpmlFileChosen}
             />
             <SubscribeBar
                 url={subscribeUrl}

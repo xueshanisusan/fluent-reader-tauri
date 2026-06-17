@@ -66,6 +66,34 @@ pub mod groups {
             .await?;
         Ok(())
     }
+
+    pub async fn find_or_create_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        name: &str,
+    ) -> sqlx::Result<Group> {
+        if let Some(existing) = sqlx::query_as::<_, Group>(
+            "SELECT gid, name, expanded, position FROM groups WHERE name = ?",
+        )
+        .bind(name)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            return Ok(existing);
+        }
+        let next_pos: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM groups",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query_as(
+            "INSERT INTO groups (name, position) VALUES (?, ?) \
+             RETURNING gid, name, expanded, position",
+        )
+        .bind(name)
+        .bind(next_pos)
+        .fetch_one(&mut *tx)
+        .await
+    }
 }
 
 pub mod sources {
@@ -223,6 +251,33 @@ pub mod sources {
             .execute(&mut *tx)
             .await?;
         Ok(())
+    }
+
+    // For OPML import: try to insert; if the URL already exists (UNIQUE),
+    // skip silently. Returns true iff a row was inserted.
+    pub async fn insert_or_ignore_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        url: &str,
+        name: &str,
+        group_id: Option<i64>,
+    ) -> sqlx::Result<bool> {
+        let next_pos: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM sources WHERE group_id IS ?",
+        )
+        .bind(group_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let res = sqlx::query(
+            "INSERT OR IGNORE INTO sources (url, name, group_id, position) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(url)
+        .bind(name)
+        .bind(group_id)
+        .bind(next_pos)
+        .execute(&mut *tx)
+        .await?;
+        Ok(res.rows_affected() == 1)
     }
 }
 

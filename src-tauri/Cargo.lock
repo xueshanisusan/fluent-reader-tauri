@@ -1282,6 +1282,7 @@ dependencies = [
  "base64 0.22.1",
  "feed-rs",
  "httpmock",
+ "quick-xml 0.37.5",
  "reqwest 0.12.28",
  "scraper",
  "serde",
