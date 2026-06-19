@@ -4,12 +4,27 @@
 
 import { settings, ThemeSettings } from "./settings-bridge"
 
-type Resolved = "light" | "dark"
+export type Resolved = "light" | "dark"
 
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
 let mediaQuery: MediaQueryList | null = null
+
+type Listener = (resolved: Resolved) => void
+const listeners = new Set<Listener>()
+
+export function getResolvedTheme(): Resolved {
+    const attr = document.documentElement.getAttribute("data-theme")
+    return attr === "dark" ? "dark" : "light"
+}
+
+export function onResolvedThemeChange(cb: Listener): () => void {
+    listeners.add(cb)
+    return () => {
+        listeners.delete(cb)
+    }
+}
 
 function resolve(t: ThemeSettings): Resolved {
     if (t === ThemeSettings.Dark) return "dark"
@@ -24,6 +39,7 @@ function getMediaQuery(): MediaQueryList {
 
 function apply(resolved: Resolved): void {
     document.documentElement.setAttribute("data-theme", resolved)
+    for (const cb of listeners) cb(resolved)
 }
 
 function detachMediaListener(): void {

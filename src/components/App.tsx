@@ -22,6 +22,11 @@ import { Sidebar } from "./app/Sidebar"
 import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
 import { settings, type SettingsShape } from "../scripts/settings-bridge"
+import {
+    getResolvedTheme,
+    onResolvedThemeChange,
+    type Resolved,
+} from "../scripts/theme"
 import layout from "./app/layout.module.css"
 
 function formatRefreshSummary(results: RefreshResult[]): string {
@@ -100,6 +105,17 @@ export function App(): React.ReactElement {
     const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
         null
     )
+    const [resolvedTheme, setResolvedTheme] = React.useState<Resolved>(() =>
+        getResolvedTheme()
+    )
+
+    React.useEffect(() => {
+        const unsub = onResolvedThemeChange(setResolvedTheme)
+        // Sync once in case theme was applied between the initial state read
+        // and effect mount (applyStoredTheme runs async at startup).
+        setResolvedTheme(getResolvedTheme())
+        return unsub
+    }, [])
 
     const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cancelledRef = React.useRef(false)
@@ -571,12 +587,13 @@ export function App(): React.ReactElement {
                     <div className={layout.articlePane}>
                         {selectedItem && (
                             <ArticleView
-                                key={`${selectedItem.iid}@${remount}@${appSettings?.fontSize ?? 16}@${appSettings?.fontFamily ?? ""}`}
+                                key={`${selectedItem.iid}@${remount}@${appSettings?.fontSize ?? 16}@${appSettings?.fontFamily ?? ""}@${resolvedTheme}`}
                                 html={selectedItem.content}
                                 articleId={`${selectedItem.iid}@${remount}`}
                                 hostStyle={{
                                     fontSize: appSettings?.fontSize ?? 16,
                                     fontFamily: appSettings?.fontFamily ?? "",
+                                    theme: resolvedTheme,
                                 }}
                                 onLink={onLink}
                                 onKey={onArticleKey}

@@ -20,12 +20,23 @@ export const FORWARD_KEYS: readonly string[] = [
 export interface HostStyle {
     fontSize: number // px; clamped/sanitized by caller
     fontFamily: string // empty string = use HOST_BASE_CSS default
+    theme: "light" | "dark"
 }
 
 export const DEFAULT_HOST_STYLE: HostStyle = {
     fontSize: 16,
     fontFamily: "",
+    theme: "light",
 }
+
+// Dark-mode color tokens for the iframe. Override --fr-fg / --fr-bg /
+// --fr-link on :root so the rules in HOST_BASE_CSS (which use these vars
+// with light fallbacks) pick the dark values automatically.
+const HOST_DARK_OVERRIDE = `
+  :root { --fr-fg: #e8e8e8; --fr-bg: #1a1a1a; --fr-link: #6cf; }
+  blockquote { color: #aaa; }
+  pre { background: #2a2a2a; }
+`
 
 export const HOST_BASE_CSS = `
   :root { color-scheme: light dark; }
@@ -54,7 +65,8 @@ function buildHostOverride(style: HostStyle): string {
     const familyRule = safeFamily.trim()
         ? `body { font-family: ${safeFamily}; }`
         : ""
-    return `\n  body { font-size: ${size}px; }\n  ${familyRule}`
+    const themeRule = style.theme === "dark" ? HOST_DARK_OVERRIDE : ""
+    return `${themeRule}\n  body { font-size: ${size}px; }\n  ${familyRule}`
 }
 
 function clamp(n: number, lo: number, hi: number): number {
