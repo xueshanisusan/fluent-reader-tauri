@@ -16,6 +16,7 @@ export interface HeaderProps {
     onRemountIframe: () => void
     onImportOpml: () => void
     onExportOpml: () => void
+    onOpenSettings: () => void
 }
 
 export function Header(props: HeaderProps): React.ReactElement {
@@ -33,6 +34,7 @@ export function Header(props: HeaderProps): React.ReactElement {
         onRemountIframe,
         onImportOpml,
         onExportOpml,
+        onOpenSettings,
     } = props
 
     return (
@@ -79,6 +81,9 @@ export function Header(props: HeaderProps): React.ReactElement {
                 disabled={opmlBusy}
                 onClick={onExportOpml}>
                 Export OPML
+            </button>
+            <button className={styles.btn} onClick={onOpenSettings}>
+                Settings
             </button>
             <button
                 className={styles.btn}

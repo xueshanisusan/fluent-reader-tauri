@@ -1,10 +1,11 @@
 import * as React from "react"
 import { sanitize } from "../../scripts/article-sanitize"
-import { buildSrcdoc, type IframeMessage } from "./iframe-bootstrap"
+import { buildSrcdoc, type IframeMessage, type HostStyle } from "./iframe-bootstrap"
 
 export interface ArticleViewProps {
     html: string
     articleId?: string | number
+    hostStyle?: HostStyle
     onLink?: (url: string) => void
     onKey?: (key: string, mods: { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean }) => void
     onCtxMenu?: (data: { x: number; y: number; text: string | null; href: string | null }) => void
@@ -17,17 +18,17 @@ function isIframeMessage(d: unknown): d is IframeMessage {
 }
 
 export function ArticleView(props: ArticleViewProps): React.ReactElement {
-    const { html, articleId = "default", onLink, onKey, onCtxMenu } = props
+    const { html, articleId = "default", hostStyle, onLink, onKey, onCtxMenu } = props
     const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
 
     const srcdoc = React.useMemo<string | null>(() => {
         try {
-            return buildSrcdoc(sanitize(html))
+            return buildSrcdoc(sanitize(html), hostStyle)
         } catch (e) {
             console.error("[ArticleView] sanitize failed", e)
             return null
         }
-    }, [html])
+    }, [html, hostStyle?.fontSize, hostStyle?.fontFamily])
 
     React.useEffect(() => {
         function onMessage(e: MessageEvent): void {

@@ -17,6 +17,16 @@ export const FORWARD_KEYS: readonly string[] = [
     "PageDown", "PageUp", "Home", "End",
 ] as const
 
+export interface HostStyle {
+    fontSize: number // px; clamped/sanitized by caller
+    fontFamily: string // empty string = use HOST_BASE_CSS default
+}
+
+export const DEFAULT_HOST_STYLE: HostStyle = {
+    fontSize: 16,
+    fontFamily: "",
+}
+
 export const HOST_BASE_CSS = `
   :root { color-scheme: light dark; }
   html, body { margin: 0; padding: 0; }
@@ -32,6 +42,24 @@ export const HOST_BASE_CSS = `
   pre { background: #f4f4f4; padding: 12px; overflow-x: auto; }
   code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; }
 `
+
+// Builds a small extra <style> block to override base body font. fontFamily
+// is escaped — feed-supplied data never reaches this path, but the settings
+// modal *does* accept user-typed fontFamily, so we strip anything that could
+// break out of the CSS string. ASCII letters, digits, comma, dash, space,
+// quotes, dot, parens — covers "Georgia, serif", '"Source Sans 3", system-ui'.
+function buildHostOverride(style: HostStyle): string {
+    const size = clamp(style.fontSize, 12, 28)
+    const safeFamily = style.fontFamily.replace(/[^A-Za-z0-9 ,\-_'"\.\(\)]/g, "")
+    const familyRule = safeFamily.trim()
+        ? `body { font-family: ${safeFamily}; }`
+        : ""
+    return `\n  body { font-size: ${size}px; }\n  ${familyRule}`
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, Math.round(n)))
+}
 
 export const IFRAME_BOOTSTRAP = `
 (function(){
@@ -64,12 +92,15 @@ export const IFRAME_BOOTSTRAP = `
 })();
 `
 
-export function buildSrcdoc(cleanHtml: string): string {
+export function buildSrcdoc(
+    cleanHtml: string,
+    style: HostStyle = DEFAULT_HOST_STYLE
+): string {
     return `<!doctype html>
 <html><head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <meta name="referrer" content="no-referrer">
-<style>${HOST_BASE_CSS}</style>
+<style>${HOST_BASE_CSS}${buildHostOverride(style)}</style>
 </head><body>
 ${cleanHtml}
 <script>${IFRAME_BOOTSTRAP}</script>

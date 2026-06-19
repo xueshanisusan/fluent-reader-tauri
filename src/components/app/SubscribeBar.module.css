@@ -2,28 +2,28 @@
     display: flex;
     gap: 8px;
     padding: 4px 8px;
-    background: #1a1a1a;
-    color: #fff;
+    background: var(--bg-subscribe);
+    color: var(--text-on-header);
     font-size: 12px;
     align-items: center;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border-default);
 }
 
 .input {
     flex: 1;
     padding: 4px 8px;
-    background: #111;
-    border: 1px solid #444;
-    color: #fff;
+    background: var(--bg-input-dark);
+    border: 1px solid var(--border-input);
+    color: var(--text-on-header);
     font-size: 12px;
     min-width: 0;
 }
 
 .btn {
     padding: 4px 10px;
-    background: #444;
-    border: 1px solid #666;
-    color: #fff;
+    background: var(--btn-bg);
+    border: 1px solid var(--border-btn);
+    color: var(--btn-text);
     cursor: pointer;
     font-size: 12px;
 }
@@ -35,7 +35,7 @@
 
 .status {
     font-size: 11px;
-    color: #bbb;
+    color: var(--text-faint);
     margin-left: 8px;
     max-width: 360px;
     overflow: hidden;
@@ -58,9 +58,9 @@
 
 .pickerBtn {
     padding: 2px 8px;
-    background: #446;
-    border: 1px solid #668;
-    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--border-picker);
+    color: var(--accent-text);
     cursor: pointer;
     font-size: 11px;
 }
@@ -78,5 +78,5 @@
 }
 
 .pickerUrl {
-    color: #aaa;
+    color: var(--text-muted);
 }
