@@ -19,7 +19,14 @@ import { SubscribeBar } from "./app/SubscribeBar"
 import { FilterBar } from "./app/FilterBar"
 import { ItemList } from "./app/ItemList"
 import { Sidebar } from "./app/Sidebar"
+import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
+import { settings, type SettingsShape } from "../scripts/settings-bridge"
+import {
+    getResolvedTheme,
+    onResolvedThemeChange,
+    type Resolved,
+} from "../scripts/theme"
 import layout from "./app/layout.module.css"
 
 function formatRefreshSummary(results: RefreshResult[]): string {
@@ -94,6 +101,21 @@ export function App(): React.ReactElement {
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
     const [remount, setRemount] = React.useState(0)
     const [opmlBusy, setOpmlBusy] = React.useState(false)
+    const [settingsOpen, setSettingsOpen] = React.useState(false)
+    const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
+        null
+    )
+    const [resolvedTheme, setResolvedTheme] = React.useState<Resolved>(() =>
+        getResolvedTheme()
+    )
+
+    React.useEffect(() => {
+        const unsub = onResolvedThemeChange(setResolvedTheme)
+        // Sync once in case theme was applied between the initial state read
+        // and effect mount (applyStoredTheme runs async at startup).
+        setResolvedTheme(getResolvedTheme())
+        return unsub
+    }, [])
 
     const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cancelledRef = React.useRef(false)
@@ -126,6 +148,21 @@ export function App(): React.ReactElement {
     }, [loadSourcesAndGroups])
 
     React.useEffect(() => {
+        let cancelled = false
+        void (async () => {
+            try {
+                const all = await settings.getAll()
+                if (!cancelled) setAppSettings(all)
+            } catch (e) {
+                console.error("[App] load settings failed", e)
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    React.useEffect(() => {
         const stop = startAutoRefresh({
             onTick: results => {
                 if (cancelledRef.current) return
@@ -154,6 +191,7 @@ export function App(): React.ReactElement {
             const created = await sourcesApi.create({
                 url: feed.url,
                 name: feed.title?.trim() || feed.url,
+                fetchFrequency: appSettings?.fetchInterval ?? 0,
             })
             const outcome = await feedsApi.ingest(created.sid)
             if (cancelledRef.current) return
@@ -167,7 +205,7 @@ export function App(): React.ReactElement {
             await loadSourcesAndGroups()
             await loadItems()
         },
-        [loadItems, loadSourcesAndGroups]
+        [loadItems, loadSourcesAndGroups, appSettings]
     )
 
     const onSubscribe = React.useCallback(async () => {
@@ -469,6 +507,7 @@ export function App(): React.ReactElement {
                 onRemountIframe={() => setRemount(n => n + 1)}
                 onImportOpml={onImportOpml}
                 onExportOpml={onExportOpml}
+                onOpenSettings={() => setSettingsOpen(true)}
             />
             <input
                 ref={fileInputRef}
@@ -476,6 +515,11 @@ export function App(): React.ReactElement {
                 accept=".opml,.xml,text/xml,application/xml"
                 hidden
                 onChange={onOpmlFileChosen}
+            />
+            <SettingsModal
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                onChanged={setAppSettings}
             />
             <SubscribeBar
                 url={subscribeUrl}
@@ -543,9 +587,14 @@ export function App(): React.ReactElement {
                     <div className={layout.articlePane}>
                         {selectedItem && (
                             <ArticleView
-                                key={`${selectedItem.iid}@${remount}`}
+                                key={`${selectedItem.iid}@${remount}@${appSettings?.fontSize ?? 16}@${appSettings?.fontFamily ?? ""}@${resolvedTheme}`}
                                 html={selectedItem.content}
                                 articleId={`${selectedItem.iid}@${remount}`}
+                                hostStyle={{
+                                    fontSize: appSettings?.fontSize ?? 16,
+                                    fontFamily: appSettings?.fontFamily ?? "",
+                                    theme: resolvedTheme,
+                                }}
                                 onLink={onLink}
                                 onKey={onArticleKey}
                                 onCtxMenu={onCtxMenu}

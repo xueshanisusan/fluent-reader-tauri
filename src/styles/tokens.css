@@ -1,0 +1,77 @@
+/* Design tokens. Light theme on :root, dark theme via [data-theme="dark"].
+ * Component CSS modules reference these via var(--token-name).
+ * Theme is applied at startup by src/scripts/theme.ts based on the persisted
+ * settings.theme value.
+ */
+
+:root {
+    --bg-app: #fff;
+    --bg-panel: #f7f7f7;
+    --bg-sidebar: #f7f7f7;
+    --bg-header: #222;
+    --bg-subscribe: #1a1a1a;
+    --bg-input: #fff;
+    --bg-input-dark: #111;
+    --bg-modal-overlay: rgba(0, 0, 0, 0.4);
+    --bg-row-hover: #eee;
+    --bg-row-active: #dde7f7;
+    --bg-code: #f4f4f4;
+
+    --text-primary: #222;
+    --text-secondary: #444;
+    --text-muted: #888;
+    --text-faint: #bbb;
+    --text-on-header: #fff;
+    --text-link: #06c;
+
+    --border-default: #ddd;
+    --border-soft: #eee;
+    --border-strong: #888;
+    --border-input: #444;
+    --border-btn: #666;
+    --border-picker: #668;
+
+    --accent: #446;
+    --accent-text: #fff;
+    --danger: #c33;
+    --star: #e6b800;
+
+    --btn-bg: #444;
+    --btn-text: #fff;
+}
+
+[data-theme="dark"] {
+    --bg-app: #1e1e1e;
+    --bg-panel: #2a2a2a;
+    --bg-sidebar: #1a1a1a;
+    --bg-header: #111;
+    --bg-subscribe: #111;
+    --bg-input: #2a2a2a;
+    --bg-input-dark: #0e0e0e;
+    --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+    --bg-row-hover: #2a2a2a;
+    --bg-row-active: #2a3a5a;
+    --bg-code: #1a1a1a;
+
+    --text-primary: #e8e8e8;
+    --text-secondary: #c8c8c8;
+    --text-muted: #888;
+    --text-faint: #666;
+    --text-on-header: #fff;
+    --text-link: #6cf;
+
+    --border-default: #3a3a3a;
+    --border-soft: #2a2a2a;
+    --border-strong: #555;
+    --border-input: #555;
+    --border-btn: #555;
+    --border-picker: #557;
+
+    --accent: #557;
+    --accent-text: #fff;
+    --danger: #e55;
+    --star: #e6b800;
+
+    --btn-bg: #333;
+    --btn-text: #e8e8e8;
+}

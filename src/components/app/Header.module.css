@@ -2,8 +2,8 @@
     display: flex;
     gap: 8px;
     padding: 8px;
-    background: #222;
-    color: #fff;
+    background: var(--bg-header);
+    color: var(--text-on-header);
     font-size: 13px;
     align-items: center;
 }
@@ -17,7 +17,7 @@
 
 .status {
     font-size: 11px;
-    color: #bbb;
+    color: var(--text-faint);
     margin-left: 8px;
     max-width: 360px;
     overflow: hidden;
@@ -27,9 +27,9 @@
 
 .btn {
     padding: 4px 10px;
-    background: #444;
-    border: 1px solid #666;
-    color: #fff;
+    background: var(--btn-bg);
+    border: 1px solid var(--border-btn);
+    color: var(--btn-text);
     cursor: pointer;
     font-size: 13px;
 }

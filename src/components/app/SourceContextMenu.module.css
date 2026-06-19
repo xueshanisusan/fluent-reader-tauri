@@ -1,14 +1,14 @@
 .menu {
     position: fixed;
-    background: #fff;
-    border: 1px solid #888;
+    background: var(--bg-app);
+    border: 1px solid var(--border-strong);
     border-radius: 3px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     z-index: 200;
     min-width: 140px;
     padding: 4px 0;
     font-size: 13px;
-    color: #222;
+    color: var(--text-primary);
 }
 
 .item {
@@ -18,9 +18,9 @@
 }
 
 .item:hover {
-    background: #dde7f7;
+    background: var(--bg-row-active);
 }
 
 .itemDanger {
-    color: #c33;
+    color: var(--danger);
 }
