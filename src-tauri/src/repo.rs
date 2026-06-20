@@ -364,7 +364,7 @@ pub mod items {
         let mut sql = String::from(
             "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
                     snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
-             FROM items WHERE 1=1",
+             FROM items WHERE hidden = 0",
         );
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
@@ -410,7 +410,7 @@ pub mod items {
             "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
                     snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
              FROM items \
-             WHERE (title LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')",
+             WHERE hidden = 0 AND (title LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')",
         );
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
@@ -448,8 +448,9 @@ pub mod items {
         for it in items {
             let res = sqlx::query(
                 "INSERT INTO items \
-                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid, \
+                     has_read, starred, hidden, notify) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(it.source_id)
             .bind(&it.title)
@@ -461,6 +462,10 @@ pub mod items {
             .bind(it.snippet.unwrap_or_default())
             .bind(&it.creator)
             .bind(&it.guid)
+            .bind(it.has_read)
+            .bind(it.starred)
+            .bind(it.hidden)
+            .bind(it.notify)
             .execute(&mut *tx)
             .await?;
             inserted += res.rows_affected();
@@ -490,7 +495,7 @@ pub mod items {
     pub async fn unread_counts(pool: &SqlitePool) -> sqlx::Result<Vec<UnreadCount>> {
         sqlx::query_as(
             "SELECT source_id, COUNT(*) AS count FROM items \
-             WHERE has_read = 0 GROUP BY source_id",
+             WHERE has_read = 0 AND hidden = 0 GROUP BY source_id",
         )
         .fetch_all(pool)
         .await
@@ -511,8 +516,9 @@ pub mod items {
         for it in items {
             let res = sqlx::query(
                 "INSERT OR IGNORE INTO items \
-                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid, \
+                     has_read, starred, hidden, notify) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(it.source_id)
             .bind(&it.title)
@@ -524,6 +530,10 @@ pub mod items {
             .bind(it.snippet.clone().unwrap_or_default())
             .bind(&it.creator)
             .bind(&it.guid)
+            .bind(it.has_read)
+            .bind(it.starred)
+            .bind(it.hidden)
+            .bind(it.notify)
             .execute(&mut *tx)
             .await?;
             inserted += res.rows_affected();

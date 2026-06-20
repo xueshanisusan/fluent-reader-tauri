@@ -93,6 +93,10 @@ export interface NewItem {
   snippet?: string | null;
   creator?: string | null;
   guid?: string | null;
+  hasRead?: boolean;
+  starred?: boolean;
+  hidden?: boolean;
+  notify?: boolean;
 }
 
 export interface UnreadCount {

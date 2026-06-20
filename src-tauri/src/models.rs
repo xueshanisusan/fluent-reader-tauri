@@ -77,7 +77,7 @@ pub struct NewSource {
     pub text_dir: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewItem {
     pub source_id: i64,
@@ -90,6 +90,14 @@ pub struct NewItem {
     pub creator: Option<String>,
     #[serde(default)]
     pub guid: Option<String>,
+    #[serde(default)]
+    pub has_read: bool,
+    #[serde(default)]
+    pub starred: bool,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub notify: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

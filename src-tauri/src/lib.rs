@@ -5,6 +5,7 @@ pub mod models;
 pub mod net;
 pub mod opml;
 pub mod repo;
+pub mod rules;
 pub mod search;
 
 use commands::AppState;

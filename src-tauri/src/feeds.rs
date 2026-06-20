@@ -66,6 +66,10 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
         snippet,
         creator,
         guid,
+        has_read: false,
+        starred: false,
+        hidden: false,
+        notify: false,
     })
 }
 
@@ -123,11 +127,19 @@ pub async fn ingest(
     let feed = parser::parse(bytes.as_slice())
         .map_err(|e| IngestionError::Parse { message: e.to_string() })?;
 
-    let items: Vec<NewItem> = feed
+    let mut items: Vec<NewItem> = feed
         .entries
         .into_iter()
         .filter_map(|e| entry_to_new_item(sid, e))
         .collect();
+
+    // Load rules and stamp action fields on parsed items BEFORE opening the
+    // write tx. Reads inside the tx would deadlock against max_connections=1
+    // pools (see opml.rs::import for the same pattern).
+    let rules = repo::rules::list_for_source(pool, sid)
+        .await
+        .map_err(|e| IngestionError::Db { message: e.to_string() })?;
+    crate::rules::apply_all(&rules, &mut items);
 
     let etag = find_header(&resp.headers, "etag").map(|s| s.to_string());
     let last_modified = find_header(&resp.headers, "last-modified").map(|s| s.to_string());
