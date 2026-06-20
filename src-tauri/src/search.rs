@@ -3,6 +3,8 @@ use crate::models::*;
 use crate::repo;
 use tauri::State;
 
+// TODO: support a scope param ("title" | "titleAndSnippet") so the user can
+// narrow searches when snippet hits are noisy. Default stays title+snippet.
 #[tauri::command]
 pub async fn items_search(
     state: State<'_, AppState>,
