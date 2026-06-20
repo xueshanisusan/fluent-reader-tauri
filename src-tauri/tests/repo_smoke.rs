@@ -150,6 +150,7 @@ async fn repo_crud_roundtrip() {
             snippet: Some(format!("body {}", i)),
             creator: if i % 2 == 0 { Some("alice".into()) } else { None },
             guid: None,
+            ..Default::default()
         })
         .collect();
     let inserted = repo::items::insert_many(&pool, new_items).await.unwrap();
@@ -231,6 +232,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
         snippet: None,
         creator: None,
         guid: Some("guid-A".into()),
+        ..Default::default()
     };
     let second_same_guid_diff_link = NewItem {
         source_id: src.sid,
@@ -243,6 +245,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
         snippet: None,
         creator: None,
         guid: Some("guid-A".into()),
+        ..Default::default()
     };
     let third_no_guid = NewItem {
         source_id: src.sid,
@@ -254,6 +257,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
         snippet: None,
         creator: None,
         guid: None,
+        ..Default::default()
     };
 
     let mut tx = pool.begin().await.unwrap();
@@ -309,6 +313,7 @@ fn mk_item(source_id: i64, title: &str, snippet: &str, date_ms: i64) -> NewItem 
         snippet: Some(snippet.into()),
         creator: None,
         guid: None,
+        ..Default::default()
     }
 }
 
