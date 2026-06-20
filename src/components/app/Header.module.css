@@ -38,3 +38,17 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+.searchInput {
+    flex: 0 0 240px;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.searchInput:focus {
+    outline: 1px solid var(--accent);
+}

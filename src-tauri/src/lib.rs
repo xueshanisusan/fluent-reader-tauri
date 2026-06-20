@@ -5,6 +5,7 @@ pub mod models;
 pub mod net;
 pub mod opml;
 pub mod repo;
+pub mod search;
 
 use commands::AppState;
 use tauri::Manager;
@@ -47,6 +48,7 @@ pub fn run() {
             commands::items_mark_read,
             commands::items_set_starred,
             commands::items_unread_counts,
+            search::items_search,
             net::net_fetch,
             feeds::sources_ingest,
             feeds::feeds_discover,

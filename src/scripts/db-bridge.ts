@@ -108,6 +108,17 @@ export interface ItemListFilter {
   offset?: number;
 }
 
+export interface ItemSearchFilter {
+  query: string;
+  sourceId?: number;
+  hasRead?: boolean;
+  starred?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export type SearchError = { kind: "db"; message: string };
+
 export const groups = {
   list: () => invoke<Group[]>("groups_list"),
   create: (name: string) => invoke<Group>("groups_create", { name }),
@@ -153,6 +164,15 @@ export const items = {
       hasRead: filter.hasRead ?? null,
       starred: filter.starred ?? null,
       limit: filter.limit ?? 100,
+      offset: filter.offset ?? 0,
+    }),
+  search: (filter: ItemSearchFilter) =>
+    invoke<Item[]>("items_search", {
+      query: filter.query,
+      sourceId: filter.sourceId ?? null,
+      hasRead: filter.hasRead ?? null,
+      starred: filter.starred ?? null,
+      limit: filter.limit ?? 50,
       offset: filter.offset ?? 0,
     }),
   insert: (newItems: NewItem[]) =>

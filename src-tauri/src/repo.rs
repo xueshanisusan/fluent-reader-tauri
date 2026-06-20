@@ -390,6 +390,54 @@ pub mod items {
         q.bind(limit).bind(offset).fetch_all(pool).await
     }
 
+    pub async fn search(
+        pool: &SqlitePool,
+        query: &str,
+        source_id: Option<i64>,
+        has_read: Option<bool>,
+        starred: Option<bool>,
+        limit: i64,
+        offset: i64,
+    ) -> sqlx::Result<Vec<Item>> {
+        // Escape LIKE metachars in user input. Backslash must come first.
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
+
+        let mut sql = String::from(
+            "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
+                    snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
+             FROM items \
+             WHERE (title LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')",
+        );
+        if source_id.is_some() {
+            sql.push_str(" AND source_id = ?");
+        }
+        if has_read.is_some() {
+            sql.push_str(" AND has_read = ?");
+        }
+        if starred.is_some() {
+            sql.push_str(" AND starred = ?");
+        }
+        sql.push_str(" ORDER BY date_ms DESC, iid DESC LIMIT ? OFFSET ?");
+
+        let mut q = sqlx::query_as::<_, Item>(&sql)
+            .bind(pattern.clone())
+            .bind(pattern);
+        if let Some(v) = source_id {
+            q = q.bind(v);
+        }
+        if let Some(v) = has_read {
+            q = q.bind(v);
+        }
+        if let Some(v) = starred {
+            q = q.bind(v);
+        }
+        q.bind(limit).bind(offset).fetch_all(pool).await
+    }
+
     pub async fn insert_many(pool: &SqlitePool, items: Vec<NewItem>) -> sqlx::Result<u64> {
         if items.is_empty() {
             return Ok(0);
