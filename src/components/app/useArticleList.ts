@@ -6,6 +6,7 @@ export type Filter = "all" | "unread" | "starred"
 
 export interface UseArticleListOptions {
     sourceId: number | null
+    searchQuery: string
 }
 
 export interface UseArticleList {
@@ -28,7 +29,7 @@ export interface UseArticleList {
 }
 
 export function useArticleList(opts: UseArticleListOptions): UseArticleList {
-    const { sourceId } = opts
+    const { sourceId, searchQuery } = opts
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
     const [listLoading, setListLoading] = React.useState(false)
@@ -56,26 +57,36 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         setListLoading(true)
         setListError(null)
         try {
-            const list = await itemsApi.list({
-                limit: 50,
-                sourceId: sourceId ?? undefined,
-                hasRead: filter === "unread" ? false : undefined,
-                starred: filter === "starred" ? true : undefined,
-            })
+            const trimmedQuery = searchQuery.trim()
+            const list = trimmedQuery
+                ? await itemsApi.search({
+                      query: trimmedQuery,
+                      limit: 50,
+                      sourceId: sourceId ?? undefined,
+                      hasRead: filter === "unread" ? false : undefined,
+                      starred: filter === "starred" ? true : undefined,
+                  })
+                : await itemsApi.list({
+                      limit: 50,
+                      sourceId: sourceId ?? undefined,
+                      hasRead: filter === "unread" ? false : undefined,
+                      starred: filter === "starred" ? true : undefined,
+                  })
             if (cancelledRef.current) return
             setItems(list)
             setSelectedItem(prev => {
                 if (prev && list.some(i => i.iid === prev.iid)) return prev
                 return list.length > 0 ? list[0] : null
             })
-            void reloadUnreadCounts()
+            // Search is a view — don't re-fetch sidebar unread counts.
+            if (!trimmedQuery) void reloadUnreadCounts()
         } catch (e) {
             if (cancelledRef.current) return
             setListError(String((e as Error)?.message ?? e))
         } finally {
             if (!cancelledRef.current) setListLoading(false)
         }
-    }, [filter, sourceId, reloadUnreadCounts])
+    }, [filter, sourceId, searchQuery, reloadUnreadCounts])
 
     React.useEffect(() => {
         cancelledRef.current = false

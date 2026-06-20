@@ -279,3 +279,118 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
     let all = repo::items::list(&pool, Some(src.sid), None, None, 100, 0).await.unwrap();
     assert_eq!(all.len(), 2, "no duplicate rows");
 }
+
+async fn make_src(pool: &sqlx::SqlitePool, url: &str, name: &str) -> i64 {
+    repo::sources::create(
+        pool,
+        NewSource {
+            url: url.into(),
+            name: name.into(),
+            icon_url: None,
+            group_id: None,
+            open_target: None,
+            fetch_frequency: None,
+            text_dir: None,
+        },
+    )
+    .await
+    .unwrap()
+    .sid
+}
+
+fn mk_item(source_id: i64, title: &str, snippet: &str, date_ms: i64) -> NewItem {
+    NewItem {
+        source_id,
+        title: title.into(),
+        link: format!("https://example.com/{}-{}", source_id, date_ms),
+        date_ms,
+        thumb: None,
+        content: None,
+        snippet: Some(snippet.into()),
+        creator: None,
+        guid: None,
+    }
+}
+
+#[tokio::test]
+async fn items_search_matches_title_or_snippet() {
+    let pool = db::open_memory().await.expect("open in-memory db");
+    let sid = make_src(&pool, "https://a.example/feed", "A").await;
+
+    repo::items::insert_many(
+        &pool,
+        vec![
+            mk_item(sid, "Rust 1.85 release notes", "tokio updates", 100),
+            mk_item(sid, "Go 1.23 update", "learning Rust patterns", 200),
+            mk_item(sid, "Python tips", "nothing relevant", 300),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let hits = repo::items::search(&pool, "rust", None, None, None, 50, 0).await.unwrap();
+    assert_eq!(hits.len(), 2, "title or snippet match");
+    assert_eq!(hits[0].title, "Go 1.23 update", "newer date first (snippet match)");
+    assert_eq!(hits[1].title, "Rust 1.85 release notes");
+
+    let none = repo::items::search(&pool, "kotlin", None, None, None, 50, 0).await.unwrap();
+    assert!(none.is_empty());
+}
+
+#[tokio::test]
+async fn items_search_escapes_like_metachars() {
+    let pool = db::open_memory().await.expect("open in-memory db");
+    let sid = make_src(&pool, "https://b.example/feed", "B").await;
+
+    repo::items::insert_many(
+        &pool,
+        vec![
+            mk_item(sid, "Saved 50% on hosting", "discount", 100),
+            mk_item(sid, "Saved an item", "regular post", 200),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let pct = repo::items::search(&pool, "50%", None, None, None, 50, 0).await.unwrap();
+    assert_eq!(pct.len(), 1, "literal % must not act as wildcard");
+    assert_eq!(pct[0].title, "Saved 50% on hosting");
+
+    let under = repo::items::search(&pool, "_", None, None, None, 50, 0).await.unwrap();
+    assert!(under.is_empty(), "literal _ must not act as wildcard");
+}
+
+#[tokio::test]
+async fn items_search_composes_with_filters() {
+    let pool = db::open_memory().await.expect("open in-memory db");
+    let sid_a = make_src(&pool, "https://a.example/feed", "A").await;
+    let sid_b = make_src(&pool, "https://b.example/feed", "B").await;
+
+    repo::items::insert_many(
+        &pool,
+        vec![
+            mk_item(sid_a, "rust in source A read", "x", 100),
+            mk_item(sid_a, "rust in source A unread", "x", 200),
+            mk_item(sid_b, "rust in source B unread", "x", 300),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let all = repo::items::list(&pool, Some(sid_a), None, None, 100, 0).await.unwrap();
+    let read_iid = all
+        .iter()
+        .find(|i| i.title == "rust in source A read")
+        .unwrap()
+        .iid;
+    repo::items::mark_read(&pool, read_iid, true).await.unwrap();
+
+    let scoped = repo::items::search(&pool, "rust", Some(sid_a), None, None, 50, 0).await.unwrap();
+    assert_eq!(scoped.len(), 2, "source filter applies");
+
+    let scoped_unread = repo::items::search(&pool, "rust", Some(sid_a), Some(false), None, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(scoped_unread.len(), 1);
+    assert_eq!(scoped_unread[0].title, "rust in source A unread");
+}

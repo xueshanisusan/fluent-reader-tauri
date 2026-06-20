@@ -150,6 +150,12 @@ pub enum IngestionError {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SearchError {
+    Db { message: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoveredFeed {
     pub url: String,

@@ -9,6 +9,8 @@ export interface HeaderProps {
     refreshStatus: string | null
     hasUnread: boolean
     opmlBusy: boolean
+    searchQuery: string
+    onSearchChange: (q: string) => void
     onToggleRead: () => void
     onToggleStar: () => void
     onMarkAllRead: () => void
@@ -27,6 +29,8 @@ export function Header(props: HeaderProps): React.ReactElement {
         refreshStatus,
         hasUnread,
         opmlBusy,
+        searchQuery,
+        onSearchChange,
         onToggleRead,
         onToggleStar,
         onMarkAllRead,
@@ -46,6 +50,14 @@ export function Header(props: HeaderProps): React.ReactElement {
                     <span className={styles.status}>{refreshStatus}</span>
                 )}
             </span>
+            <input
+                className={styles.searchInput}
+                type="search"
+                placeholder="Search articles…"
+                aria-label="Search articles"
+                value={searchQuery}
+                onChange={e => onSearchChange(e.target.value)}
+            />
             <button
                 className={styles.btn}
                 disabled={!selectedItem}

@@ -71,8 +71,15 @@ export function App(): React.ReactElement {
     const [selectedSourceId, setSelectedSourceId] = React.useState<
         number | null
     >(null)
+    const [searchInput, setSearchInput] = React.useState("")
+    const [searchQuery, setSearchQuery] = React.useState("")
 
-    const list = useArticleList({ sourceId: selectedSourceId })
+    React.useEffect(() => {
+        const t = setTimeout(() => setSearchQuery(searchInput), 200)
+        return () => clearTimeout(t)
+    }, [searchInput])
+
+    const list = useArticleList({ sourceId: selectedSourceId, searchQuery })
     const {
         items,
         listLoading,
@@ -500,6 +507,8 @@ export function App(): React.ReactElement {
                 refreshStatus={refreshStatus}
                 hasUnread={hasUnread}
                 opmlBusy={opmlBusy}
+                searchQuery={searchInput}
+                onSearchChange={setSearchInput}
                 onToggleRead={onToggleRead}
                 onToggleStar={onToggleStar}
                 onMarkAllRead={onMarkAllRead}
