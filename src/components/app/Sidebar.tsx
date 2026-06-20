@@ -14,6 +14,7 @@ export interface SidebarProps {
     onSelectSource: (sid: number | null) => void
     onToggleGroup: (gid: number, expanded: boolean) => void
     onRenameSource: (sid: number, name: string) => void
+    onEditRules: (sid: number) => void
     onDeleteSource: (s: Source) => void
 }
 
@@ -33,6 +34,7 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
         onSelectSource,
         onToggleGroup,
         onRenameSource,
+        onEditRules,
         onDeleteSource,
     } = props
 
@@ -126,6 +128,11 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
                     onRename={() => {
                         setRenamingSid(contextMenu.sid)
                         setContextMenu(null)
+                    }}
+                    onEditRules={() => {
+                        const sid = contextMenu.sid
+                        setContextMenu(null)
+                        onEditRules(sid)
                     }}
                     onDelete={() => {
                         const s = lookupSource(contextMenu.sid)

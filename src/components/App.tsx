@@ -19,6 +19,7 @@ import { SubscribeBar } from "./app/SubscribeBar"
 import { FilterBar } from "./app/FilterBar"
 import { ItemList } from "./app/ItemList"
 import { Sidebar } from "./app/Sidebar"
+import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
 import { settings, type SettingsShape } from "../scripts/settings-bridge"
@@ -109,6 +110,7 @@ export function App(): React.ReactElement {
     const [remount, setRemount] = React.useState(0)
     const [opmlBusy, setOpmlBusy] = React.useState(false)
     const [settingsOpen, setSettingsOpen] = React.useState(false)
+    const [rulesModalSid, setRulesModalSid] = React.useState<number | null>(null)
     const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
         null
     )
@@ -530,6 +532,14 @@ export function App(): React.ReactElement {
                 onClose={() => setSettingsOpen(false)}
                 onChanged={setAppSettings}
             />
+            <RulesModal
+                sourceId={rulesModalSid}
+                sourceName={
+                    sources.find(s => s.sid === rulesModalSid)?.name ?? ""
+                }
+                onClose={() => setRulesModalSid(null)}
+                onChanged={() => void reloadUnreadCounts()}
+            />
             <SubscribeBar
                 url={subscribeUrl}
                 inFlight={subscribeInFlight}
@@ -551,6 +561,7 @@ export function App(): React.ReactElement {
                     onSelectSource={onSelectSource}
                     onToggleGroup={onToggleGroup}
                     onRenameSource={onRenameSource}
+                    onEditRules={setRulesModalSid}
                     onDeleteSource={onDeleteSource}
                 />
                 {renderBody()}

@@ -5,6 +5,7 @@ export interface SourceContextMenuProps {
     x: number
     y: number
     onRename: () => void
+    onEditRules: () => void
     onDelete: () => void
     onDismiss: () => void
 }
@@ -12,7 +13,7 @@ export interface SourceContextMenuProps {
 export function SourceContextMenu(
     props: SourceContextMenuProps
 ): React.ReactElement {
-    const { x, y, onRename, onDelete, onDismiss } = props
+    const { x, y, onRename, onEditRules, onDelete, onDismiss } = props
     const ref = React.useRef<HTMLDivElement | null>(null)
 
     React.useLayoutEffect(() => {
@@ -42,6 +43,9 @@ export function SourceContextMenu(
         <div ref={ref} className={styles.menu}>
             <div className={styles.item} onClick={onRename}>
                 Rename
+            </div>
+            <div className={styles.item} onClick={onEditRules}>
+                Edit rules…
             </div>
             <div
                 className={`${styles.item} ${styles.itemDanger}`}
