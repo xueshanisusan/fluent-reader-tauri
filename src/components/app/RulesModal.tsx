@@ -217,6 +217,10 @@ export function RulesModal(props: RulesModalProps): React.ReactElement | null {
                         <div>Loading…</div>
                     ) : (
                         <>
+                            <div className={styles.hint}>
+                                Rules apply to newly-fetched items only. Existing
+                                articles are not affected.
+                            </div>
                             {draft.length === 0 && (
                                 <div className={styles.emptyState}>
                                     No rules yet. Click "+ Add rule" to create

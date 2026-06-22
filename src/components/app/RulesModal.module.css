@@ -53,6 +53,13 @@
     padding: 8px 0;
 }
 
+.hint {
+    color: var(--text-muted);
+    font-size: 11px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-soft);
+}
+
 .ruleCard {
     border: 1px solid var(--border-default);
     border-radius: 4px;
