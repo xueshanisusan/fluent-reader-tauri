@@ -3,6 +3,7 @@ pub mod db;
 pub mod feeds;
 pub mod models;
 pub mod net;
+pub mod notify;
 pub mod opml;
 pub mod repo;
 pub mod rules;
@@ -16,6 +17,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;

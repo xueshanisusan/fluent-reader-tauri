@@ -504,12 +504,13 @@ pub mod items {
     pub async fn insert_dedup_in_tx(
         tx: &mut sqlx::SqliteConnection,
         items: &[NewItem],
-    ) -> sqlx::Result<(u64, u64)> {
+    ) -> sqlx::Result<(u64, u64, Vec<bool>)> {
         if items.is_empty() {
-            return Ok((0, 0));
+            return Ok((0, 0, Vec::new()));
         }
         let fetched = now_ms();
         let mut inserted = 0u64;
+        let mut mask = Vec::with_capacity(items.len());
         // INSERT OR IGNORE because we have two unique indexes — (source_id, link)
         // unconditional, and (source_id, guid) partial. ON CONFLICT(target) only
         // accepts one target; OR IGNORE catches either conflict and skips.
@@ -536,9 +537,13 @@ pub mod items {
             .bind(it.notify)
             .execute(&mut *tx)
             .await?;
-            inserted += res.rows_affected();
+            let was_inserted = res.rows_affected() == 1;
+            mask.push(was_inserted);
+            if was_inserted {
+                inserted += 1;
+            }
         }
         let skipped = items.len() as u64 - inserted;
-        Ok((inserted, skipped))
+        Ok((inserted, skipped, mask))
     }
 }

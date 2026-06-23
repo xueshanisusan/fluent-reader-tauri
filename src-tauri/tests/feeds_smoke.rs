@@ -66,7 +66,7 @@ async fn ingest_200_inserts_and_persists_cache_headers() {
     let pool = db::open_memory().await.expect("open db");
     let sid = make_source(&pool, server.url("/feed")).await;
 
-    let outcome = feeds::ingest(&pool, sid).await.expect("ingest 200");
+    let (outcome, _, _) = feeds::ingest_core(&pool, sid).await.expect("ingest 200");
     match outcome {
         IngestionOutcome::Updated { inserted, skipped, .. } => {
             assert_eq!(inserted, 2, "two new items inserted");
@@ -105,7 +105,7 @@ async fn ingest_304_skips_insert_but_updates_last_fetched() {
     let pool = db::open_memory().await.expect("open db");
     let sid = make_source(&pool, server.url("/feed")).await;
 
-    feeds::ingest(&pool, sid).await.expect("first ingest");
+    feeds::ingest_core(&pool, sid).await.expect("first ingest");
     let after_first = repo::sources::get(&pool, sid).await.expect("get");
     let first_fetched = after_first.last_fetched_ms;
     m200.delete_async().await;
@@ -122,7 +122,7 @@ async fn ingest_304_skips_insert_but_updates_last_fetched() {
     // Small sleep so last_fetched_ms actually advances (ms granularity).
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 
-    let outcome = feeds::ingest(&pool, sid).await.expect("second ingest");
+    let (outcome, _, _) = feeds::ingest_core(&pool, sid).await.expect("second ingest");
     match outcome {
         IngestionOutcome::NotModified { .. } => {}
         IngestionOutcome::Updated { .. } => panic!("expected NotModified"),
@@ -242,13 +242,13 @@ async fn ingest_dedup_on_identical_200_body() {
     let pool = db::open_memory().await.expect("open db");
     let sid = make_source(&pool, server.url("/feed")).await;
 
-    let first = feeds::ingest(&pool, sid).await.expect("first");
+    let (first, _, _) = feeds::ingest_core(&pool, sid).await.expect("first");
     match first {
         IngestionOutcome::Updated { inserted, .. } => assert_eq!(inserted, 2),
         _ => panic!("expected Updated on first"),
     }
 
-    let second = feeds::ingest(&pool, sid).await.expect("second");
+    let (second, _, _) = feeds::ingest_core(&pool, sid).await.expect("second");
     match second {
         IngestionOutcome::Updated { inserted, skipped, .. } => {
             assert_eq!(inserted, 0, "no inserts on identical body");
