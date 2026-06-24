@@ -261,7 +261,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
     };
 
     let mut tx = pool.begin().await.unwrap();
-    let (inserted, skipped) =
+    let (inserted, skipped, _) =
         repo::items::insert_dedup_in_tx(&mut tx, &[first.clone(), third_no_guid.clone()])
             .await
             .unwrap();
@@ -270,7 +270,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
     assert_eq!(skipped, 0);
 
     let mut tx = pool.begin().await.unwrap();
-    let (inserted2, skipped2) = repo::items::insert_dedup_in_tx(
+    let (inserted2, skipped2, _) = repo::items::insert_dedup_in_tx(
         &mut tx,
         &[second_same_guid_diff_link.clone(), third_no_guid.clone()],
     )

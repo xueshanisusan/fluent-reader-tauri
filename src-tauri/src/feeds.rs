@@ -73,10 +73,16 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
     })
 }
 
-pub async fn ingest(
+/// Pure ingest: fetches, parses, applies rules, persists. Returns the
+/// outcome plus the source name and the subset of items that were both
+/// freshly inserted (i.e. not dedup-skipped) AND flagged `notify=true`
+/// by a rule. The `notify::dispatch` step lives in the AppHandle-bound
+/// wrapper below; this function is `AppHandle`-free so tests can call
+/// it without a Tauri runtime.
+pub async fn ingest_core(
     pool: &sqlx::SqlitePool,
     sid: i64,
-) -> Result<IngestionOutcome, IngestionError> {
+) -> Result<(IngestionOutcome, String, Vec<NewItem>), IngestionError> {
     let source = repo::sources::get(pool, sid)
         .await
         .map_err(|e| IngestionError::Db { message: e.to_string() })?;
@@ -111,7 +117,11 @@ pub async fn ingest(
         tx.commit()
             .await
             .map_err(|e| IngestionError::Db { message: e.to_string() })?;
-        return Ok(IngestionOutcome::NotModified { final_url: resp.final_url });
+        return Ok((
+            IngestionOutcome::NotModified { final_url: resp.final_url },
+            source.name,
+            Vec::new(),
+        ));
     }
 
     if !(200..300).contains(&resp.status) {
@@ -148,7 +158,7 @@ pub async fn ingest(
         .begin()
         .await
         .map_err(|e| IngestionError::Db { message: e.to_string() })?;
-    let (inserted, skipped) = repo::items::insert_dedup_in_tx(&mut tx, &items)
+    let (inserted, skipped, mask) = repo::items::insert_dedup_in_tx(&mut tx, &items)
         .await
         .map_err(|e| IngestionError::Db { message: e.to_string() })?;
     repo::sources::set_cache_headers_in_tx(
@@ -166,19 +176,43 @@ pub async fn ingest(
         .await
         .map_err(|e| IngestionError::Db { message: e.to_string() })?;
 
-    Ok(IngestionOutcome::Updated {
-        inserted,
-        skipped,
-        final_url: resp.final_url,
-    })
+    let notify_items: Vec<NewItem> = items
+        .into_iter()
+        .zip(mask.iter())
+        .filter_map(|(it, ins)| if *ins && it.notify { Some(it) } else { None })
+        .collect();
+
+    Ok((
+        IngestionOutcome::Updated {
+            inserted,
+            skipped,
+            final_url: resp.final_url,
+        },
+        source.name,
+        notify_items,
+    ))
+}
+
+/// Thin wrapper around `ingest_core` that fires OS notifications for any
+/// rule-flagged items the core surfaced. Used by the `sources_ingest`
+/// command; tests should call `ingest_core` directly.
+pub async fn ingest(
+    app: &tauri::AppHandle,
+    pool: &sqlx::SqlitePool,
+    sid: i64,
+) -> Result<IngestionOutcome, IngestionError> {
+    let (outcome, source_name, notify_items) = ingest_core(pool, sid).await?;
+    crate::notify::dispatch(app, &source_name, &notify_items);
+    Ok(outcome)
 }
 
 #[tauri::command]
 pub async fn sources_ingest(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     sid: i64,
 ) -> Result<IngestionOutcome, IngestionError> {
-    ingest(&state.pool, sid).await
+    ingest(&app, &state.pool, sid).await
 }
 
 // Feed auto-discovery: given an arbitrary URL, return the feed URLs we can ingest.

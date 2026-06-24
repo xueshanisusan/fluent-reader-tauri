@@ -15,7 +15,7 @@ export interface SettingsModalProps {
 
 type Draft = Pick<
     SettingsShape,
-    "theme" | "fontSize" | "fontFamily" | "fetchInterval"
+    "theme" | "fontSize" | "fontFamily" | "fetchInterval" | "notificationsEnabled"
 >
 
 const THEME_LABELS: Array<{ value: ThemeSettings; label: string }> = [
@@ -46,6 +46,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     fontSize: all.fontSize,
                     fontFamily: all.fontFamily,
                     fetchInterval: all.fetchInterval,
+                    notificationsEnabled: all.notificationsEnabled,
                 })
             } catch (e) {
                 if (cancelled) return
@@ -69,6 +70,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                 fontSize: draft.fontSize,
                 fontFamily: draft.fontFamily,
                 fetchInterval: draft.fetchInterval,
+                notificationsEnabled: draft.notificationsEnabled,
             }
             if (all.theme !== draft.theme) await setTheme(draft.theme)
             if (all.fontSize !== draft.fontSize)
@@ -77,6 +79,11 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                 await settings.set("fontFamily", draft.fontFamily)
             if (all.fetchInterval !== draft.fetchInterval)
                 await settings.set("fetchInterval", draft.fetchInterval)
+            if (all.notificationsEnabled !== draft.notificationsEnabled)
+                await settings.set(
+                    "notificationsEnabled",
+                    draft.notificationsEnabled
+                )
             onChanged(next)
             onClose()
         } catch (e) {
@@ -174,6 +181,27 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                 <span className={styles.hint}>
                                     e.g. <code>Georgia, serif</code> or leave
                                     blank for system default.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.radio}>
+                                    <input
+                                        type="checkbox"
+                                        checked={draft.notificationsEnabled}
+                                        onChange={e =>
+                                            setDraft({
+                                                ...draft,
+                                                notificationsEnabled:
+                                                    e.target.checked,
+                                            })
+                                        }
+                                    />
+                                    Show notifications for matching items
+                                </label>
+                                <span className={styles.hint}>
+                                    Rules with a Notify action fire OS
+                                    notifications when the app is not focused.
                                 </span>
                             </div>
 

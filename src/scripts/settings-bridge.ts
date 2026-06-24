@@ -64,6 +64,7 @@ export interface SettingsShape {
   filterType: number | null;
   listViewConfigs: ViewConfigs;
   menuUnreadSourcesOnly: boolean;
+  notificationsEnabled: boolean;
 }
 
 const DEFAULTS: SettingsShape = {
@@ -81,6 +82,7 @@ const DEFAULTS: SettingsShape = {
   filterType: null,
   listViewConfigs: ViewConfigs.ShowCover,
   menuUnreadSourcesOnly: false,
+  notificationsEnabled: true,
 };
 
 const STORE_FILE = "settings.json";

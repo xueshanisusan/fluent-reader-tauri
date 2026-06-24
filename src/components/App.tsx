@@ -1,5 +1,6 @@
 import * as React from "react"
 import { ArticleView } from "./article/ArticleView"
+import type { HostStyle } from "./article/iframe-bootstrap"
 import { openExternal } from "../scripts/shell-bridge"
 import {
     groups as groupsApi,
@@ -125,6 +126,20 @@ export function App(): React.ReactElement {
         setResolvedTheme(getResolvedTheme())
         return unsub
     }, [])
+
+    // Stable identity for the iframe's host style props. Without this, the
+    // object literal would change identity on every App re-render, defeating
+    // any downstream React.memo and making `useEffect([hostStyle])` patterns
+    // unsafe to add later. The iframe's srcdoc useMemo reads scalar fields,
+    // so it doesn't care — but the identity stability is cheap insurance.
+    const hostStyle = React.useMemo<HostStyle>(
+        () => ({
+            fontSize: appSettings?.fontSize ?? 16,
+            fontFamily: appSettings?.fontFamily ?? "",
+            theme: resolvedTheme,
+        }),
+        [appSettings?.fontSize, appSettings?.fontFamily, resolvedTheme]
+    )
 
     const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cancelledRef = React.useRef(false)
@@ -607,14 +622,10 @@ export function App(): React.ReactElement {
                     <div className={layout.articlePane}>
                         {selectedItem && (
                             <ArticleView
-                                key={`${selectedItem.iid}@${remount}@${appSettings?.fontSize ?? 16}@${appSettings?.fontFamily ?? ""}@${resolvedTheme}`}
+                                key={`${selectedItem.iid}@${remount}`}
                                 html={selectedItem.content}
                                 articleId={`${selectedItem.iid}@${remount}`}
-                                hostStyle={{
-                                    fontSize: appSettings?.fontSize ?? 16,
-                                    fontFamily: appSettings?.fontFamily ?? "",
-                                    theme: resolvedTheme,
-                                }}
+                                hostStyle={hostStyle}
                                 onLink={onLink}
                                 onKey={onArticleKey}
                                 onCtxMenu={onCtxMenu}
