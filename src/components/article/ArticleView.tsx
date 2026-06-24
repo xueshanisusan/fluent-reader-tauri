@@ -14,7 +14,7 @@ export interface ArticleViewProps {
 function isIframeMessage(d: unknown): d is IframeMessage {
     if (!d || typeof d !== "object") return false
     const t = (d as { t?: unknown }).t
-    return t === "link" || t === "key" || t === "ctxmenu"
+    return t === "ready" || t === "link" || t === "key" || t === "ctxmenu"
 }
 
 export function ArticleView(props: ArticleViewProps): React.ReactElement {
@@ -28,7 +28,7 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
             console.error("[ArticleView] sanitize failed", e)
             return null
         }
-    }, [html, hostStyle?.fontSize, hostStyle?.fontFamily])
+    }, [html, hostStyle?.fontSize, hostStyle?.fontFamily, hostStyle?.theme])
 
     React.useEffect(() => {
         function onMessage(e: MessageEvent): void {
@@ -38,6 +38,10 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
                 return
             }
             switch (e.data.t) {
+                case "ready":
+                    // Bootstrap heartbeat. Consumed by the watchdog effect; no
+                    // host-side state to update here.
+                    break
                 case "link": {
                     // Belt: literal scheme+`//` prefix rejects `https:foo:` protocol-confusion forms
                     // that `new URL(...).protocol === "https:"` would otherwise accept.
@@ -70,6 +74,9 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
     }, [onLink, onKey, onCtxMenu])
 
     React.useEffect(() => {
+        // Re-arms on any srcdoc churn (article identity, font, theme) — every
+        // srcdoc reload re-runs the bootstrap, which posts a `ready` ping; the
+        // 5s warning catches the case where the CSP blocks script execution.
         let gotAny = false
         function watch(e: MessageEvent): void {
             if (e.source === iframeRef.current?.contentWindow) gotAny = true
@@ -82,7 +89,7 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
             window.removeEventListener("message", watch)
             window.clearTimeout(tid)
         }
-    }, [articleId])
+    }, [articleId, hostStyle?.fontSize, hostStyle?.fontFamily, hostStyle?.theme])
 
     if (srcdoc === null) {
         return (

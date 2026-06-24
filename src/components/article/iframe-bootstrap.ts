@@ -7,6 +7,7 @@
 // these events.
 
 export type IframeMessage =
+    | { t: "ready" }
     | { t: "link";    url: string }
     | { t: "key";     key: string; mods: { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean } }
     | { t: "ctxmenu"; x: number; y: number; text: string | null; href: string | null }
@@ -77,6 +78,10 @@ export const IFRAME_BOOTSTRAP = `
 (function(){
   var FORWARD_KEYS = ${JSON.stringify([...FORWARD_KEYS])};
   function post(msg){ try { parent.postMessage(msg, '*'); } catch(e){} }
+
+  // One-shot "I'm alive" ping so the host's watchdog can confirm the bootstrap
+  // actually executed without waiting on user input.
+  post({t:'ready'});
 
   document.addEventListener('click', function(e){
     var a = e.target && e.target.closest && e.target.closest('a[href]');
