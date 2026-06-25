@@ -1,5 +1,6 @@
 import * as React from "react"
 import type { LogEntry } from "../../scripts/log-store"
+import { ViewType } from "../../scripts/settings-bridge"
 import {
     closeWindow,
     isWindowMaximized,
@@ -8,6 +9,7 @@ import {
     toggleMaximizeWindow,
 } from "../../scripts/window-bridge"
 import { LogsPanel } from "./LogsPanel"
+import { ViewsMenu } from "./ViewsMenu"
 import styles from "./NavBar.module.css"
 
 export interface NavBarProps {
@@ -15,6 +17,7 @@ export interface NavBarProps {
     refreshStatus: string | null
     hasUnread: boolean
     logEntries: ReadonlyArray<LogEntry>
+    viewMode: ViewType
     onToggleSidebar: () => void
     onToggleSearch: () => void
     onMarkAllRead: () => void
@@ -22,6 +25,7 @@ export interface NavBarProps {
     onOpenSettings: () => void
     onJumpToSource: (sid: number) => void
     onClearLogs: () => void
+    onChangeViewMode: (v: ViewType) => void
 }
 
 export function NavBar(props: NavBarProps): React.ReactElement {
@@ -30,6 +34,7 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         refreshStatus,
         hasUnread,
         logEntries,
+        viewMode,
         onToggleSidebar,
         onToggleSearch,
         onMarkAllRead,
@@ -37,10 +42,12 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         onOpenSettings,
         onJumpToSource,
         onClearLogs,
+        onChangeViewMode,
     } = props
 
     const [maximized, setMaximized] = React.useState(false)
     const [logsOpen, setLogsOpen] = React.useState(false)
+    const [viewsOpen, setViewsOpen] = React.useState(false)
 
     React.useEffect(() => {
         let unlisten: (() => void) | null = null
@@ -108,6 +115,16 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                 </button>
                 <button
                     className={styles.iconBtn}
+                    data-views-btn
+                    onClick={() => setViewsOpen(v => !v)}
+                    aria-label="View"
+                    aria-haspopup="menu"
+                    aria-expanded={viewsOpen}
+                    title="View">
+                    <ViewIcon />
+                </button>
+                <button
+                    className={styles.iconBtn}
                     onClick={onToggleSearch}
                     aria-label="Search articles"
                     title="Search articles">
@@ -153,6 +170,13 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                     onClose={() => setLogsOpen(false)}
                 />
             )}
+            {viewsOpen && (
+                <ViewsMenu
+                    current={viewMode}
+                    onSelect={onChangeViewMode}
+                    onClose={() => setViewsOpen(false)}
+                />
+            )}
         </div>
     )
 }
@@ -193,6 +217,17 @@ function SearchIcon(): React.ReactElement {
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
             <line x1="10.5" y1="10.5" x2="14" y2="14" strokeLinecap="round" />
+        </svg>
+    )
+}
+
+function ViewIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="4" height="4" rx="1" />
+            <rect x="9" y="3" width="4" height="4" rx="1" />
+            <rect x="3" y="9" width="4" height="4" rx="1" />
+            <rect x="9" y="9" width="4" height="4" rx="1" />
         </svg>
     )
 }

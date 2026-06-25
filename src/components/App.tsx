@@ -25,7 +25,11 @@ import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
-import { settings, type SettingsShape } from "../scripts/settings-bridge"
+import {
+    settings,
+    ViewType,
+    type SettingsShape,
+} from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
 import {
     getResolvedTheme,
@@ -330,6 +334,16 @@ export function App(): React.ReactElement {
         setSelectedSourceId(sid)
     }, [])
 
+    const onChangeViewMode = React.useCallback(
+        (v: ViewType) => {
+            setAppSettings(prev => (prev ? { ...prev, view: v } : prev))
+            settings
+                .set("view", v)
+                .catch(e => console.error("[App] persist view failed", e))
+        },
+        []
+    )
+
     const onToggleGroup = React.useCallback(
         async (gid: number, expanded: boolean) => {
             setExpandedGroups(prev => {
@@ -560,6 +574,8 @@ export function App(): React.ReactElement {
                 onOpenSettings={() => setSettingsOpen(true)}
                 onJumpToSource={setSelectedSourceId}
                 onClearLogs={logs.clear}
+                viewMode={appSettings?.view ?? ViewType.Cards}
+                onChangeViewMode={onChangeViewMode}
             />
             {searchBarVisible && (
                 <SearchBar
@@ -658,6 +674,7 @@ export function App(): React.ReactElement {
                     <ItemList
                         items={items}
                         selectedIid={selectedItem?.iid ?? null}
+                        viewMode={appSettings?.view ?? ViewType.Cards}
                         onSelect={setSelectedItem}
                     />
                     <div className={layout.articlePane}>
