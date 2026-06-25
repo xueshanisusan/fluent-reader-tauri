@@ -16,6 +16,28 @@
     overflow: hidden;
 }
 
+.itemColumn {
+    display: flex;
+    flex-direction: column;
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border-default);
+    overflow: hidden;
+}
+
+.itemColumnEmpty {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
 .articlePane {
     flex: 1;
     position: relative;

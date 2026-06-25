@@ -16,6 +16,7 @@ export interface SidebarProps {
     onRenameSource: (sid: number, name: string) => void
     onEditRules: (sid: number) => void
     onDeleteSource: (s: Source) => void
+    onAddFeed: () => void
 }
 
 interface ContextMenuState {
@@ -36,6 +37,7 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
         onRenameSource,
         onEditRules,
         onDeleteSource,
+        onAddFeed,
     } = props
 
     const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(
@@ -92,6 +94,17 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
 
     return (
         <div className={styles.sidebar}>
+            <div className={styles.subsHeader}>
+                <span className={styles.subsHeaderLabel}>Subscriptions</span>
+                <button
+                    className={styles.addBtn}
+                    onClick={onAddFeed}
+                    aria-label="Add feed"
+                    title="Add feed">
+                    <PlusIcon />
+                </button>
+            </div>
+
             <div className={allRowClass} onClick={() => onSelectSource(null)}>
                 <span className={styles.label}>All</span>
                 {totalUnread > 0 && (
@@ -143,5 +156,14 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
                 />
             )}
         </div>
+    )
+}
+
+function PlusIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <rect x="7.3" y="2" width="1.4" height="12" />
+            <rect x="2" y="7.3" width="12" height="1.4" />
+        </svg>
     )
 }

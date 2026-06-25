@@ -1,8 +1,8 @@
 import * as React from "react"
 import type { Filter } from "./useArticleList"
-import styles from "./FilterBar.module.css"
+import styles from "./ItemListHeader.module.css"
 
-export interface FilterBarProps {
+export interface ItemListHeaderProps {
     filter: Filter
     onChange: (f: Filter) => void
 }
@@ -13,10 +13,10 @@ const OPTIONS: Array<{ value: Filter; label: string }> = [
     { value: "starred", label: "Starred" },
 ]
 
-export function FilterBar(props: FilterBarProps): React.ReactElement {
+export function ItemListHeader(props: ItemListHeaderProps): React.ReactElement {
     const { filter, onChange } = props
     return (
-        <div className={styles.bar}>
+        <div className={styles.header}>
             {OPTIONS.map(opt => (
                 <button
                     key={opt.value}

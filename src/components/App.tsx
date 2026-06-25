@@ -18,8 +18,8 @@ import { startAutoRefresh } from "../scripts/auto-refresh"
 import { NavBar } from "./app/NavBar"
 import { ArticleToolbar } from "./app/ArticleToolbar"
 import { SearchBar } from "./app/SearchBar"
-import { SubscribeBar } from "./app/SubscribeBar"
-import { FilterBar } from "./app/FilterBar"
+import { SubscribeModal } from "./app/SubscribeModal"
+import { ItemListHeader } from "./app/ItemListHeader"
 import { ItemList } from "./app/ItemList"
 import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
@@ -115,6 +115,7 @@ export function App(): React.ReactElement {
         null
     )
     const [picker, setPicker] = React.useState<DiscoveredFeed[] | null>(null)
+    const [subscribeOpen, setSubscribeOpen] = React.useState(false)
     const [remount, setRemount] = React.useState(0)
     const [opmlBusy, setOpmlBusy] = React.useState(false)
     const [settingsOpen, setSettingsOpen] = React.useState(false)
@@ -244,9 +245,13 @@ export function App(): React.ReactElement {
                 outcome.kind === "updated"
                     ? `subscribed · ${outcome.inserted} new`
                     : `subscribed · not modified`
-            setSubscribeStatus(`${feed.url} — ${summary}`)
+            // Auto-close the modal on success; surface the result on the
+            // NavBar status line since closing discards the modal's own status.
+            setRefreshStatus(`${created.name} — ${summary}`)
+            setSubscribeStatus(null)
             setSubscribeUrl("")
             setPicker(null)
+            setSubscribeOpen(false)
             await loadSourcesAndGroups()
             await loadItems()
         },
@@ -304,6 +309,13 @@ export function App(): React.ReactElement {
     const onCancelPick = React.useCallback(() => {
         setPicker(null)
         setSubscribeStatus(null)
+    }, [])
+
+    const onCloseSubscribe = React.useCallback(() => {
+        setSubscribeOpen(false)
+        setPicker(null)
+        setSubscribeStatus(null)
+        setSubscribeUrl("")
     }, [])
 
     const onRefresh = React.useCallback(async () => {
@@ -610,7 +622,8 @@ export function App(): React.ReactElement {
                 onClose={() => setRulesModalSid(null)}
                 onChanged={() => void reloadUnreadCounts()}
             />
-            <SubscribeBar
+            <SubscribeModal
+                open={subscribeOpen}
                 url={subscribeUrl}
                 inFlight={subscribeInFlight}
                 status={subscribeStatus}
@@ -619,8 +632,8 @@ export function App(): React.ReactElement {
                 onSubmit={onSubscribe}
                 onPick={onPickFeed}
                 onCancelPick={onCancelPick}
+                onClose={onCloseSubscribe}
             />
-            <FilterBar filter={filter} onChange={setFilter} />
             <div className={layout.body}>
                 {sidebarVisible && (
                     <Sidebar
@@ -634,6 +647,7 @@ export function App(): React.ReactElement {
                         onRenameSource={onRenameSource}
                         onEditRules={setRulesModalSid}
                         onDeleteSource={onDeleteSource}
+                        onAddFeed={() => setSubscribeOpen(true)}
                     />
                 )}
                 {renderBody()}
@@ -656,52 +670,54 @@ export function App(): React.ReactElement {
         if (listLoading && items === null) {
             return <div className={layout.centered}>Loading…</div>
         }
-        if (items && items.length === 0) {
-            return (
-                <div className={layout.centered}>
-                    <div>No items yet.</div>
-                    <div className={layout.emptyHint}>
-                        {sources.length === 0
-                            ? "Subscribe to a feed in the bar above."
-                            : "Try Refresh feeds, change filter, or pick a different source."}
-                    </div>
+        if (items === null) {
+            return <div className={layout.centered}>Loading…</div>
+        }
+        return (
+            <>
+                <div className={layout.itemColumn}>
+                    <ItemListHeader filter={filter} onChange={setFilter} />
+                    {items.length === 0 ? (
+                        <div className={layout.itemColumnEmpty}>
+                            <div>No items yet.</div>
+                            <div className={layout.emptyHint}>
+                                {sources.length === 0
+                                    ? "Click + in the sidebar to subscribe to a feed."
+                                    : "Try Refresh feeds, change filter, or pick a different source."}
+                            </div>
+                        </div>
+                    ) : (
+                        <ItemList
+                            items={items}
+                            selectedIid={selectedItem?.iid ?? null}
+                            viewMode={appSettings?.view ?? ViewType.Cards}
+                            onSelect={setSelectedItem}
+                        />
+                    )}
                 </div>
-            )
-        }
-        if (items && items.length > 0) {
-            return (
-                <>
-                    <ItemList
-                        items={items}
-                        selectedIid={selectedItem?.iid ?? null}
-                        viewMode={appSettings?.view ?? ViewType.Cards}
-                        onSelect={setSelectedItem}
-                    />
-                    <div className={layout.articlePane}>
-                        {selectedItem && (
-                            <>
-                                <ArticleToolbar
-                                    item={selectedItem}
-                                    onToggleRead={onToggleRead}
-                                    onToggleStar={onToggleStar}
+                <div className={layout.articlePane}>
+                    {selectedItem && (
+                        <>
+                            <ArticleToolbar
+                                item={selectedItem}
+                                onToggleRead={onToggleRead}
+                                onToggleStar={onToggleStar}
+                            />
+                            <div className={layout.articleViewport}>
+                                <ArticleView
+                                    key={`${selectedItem.iid}@${remount}`}
+                                    html={selectedItem.content}
+                                    articleId={`${selectedItem.iid}@${remount}`}
+                                    hostStyle={hostStyle}
+                                    onLink={onLink}
+                                    onKey={onArticleKey}
+                                    onCtxMenu={onCtxMenu}
                                 />
-                                <div className={layout.articleViewport}>
-                                    <ArticleView
-                                        key={`${selectedItem.iid}@${remount}`}
-                                        html={selectedItem.content}
-                                        articleId={`${selectedItem.iid}@${remount}`}
-                                        hostStyle={hostStyle}
-                                        onLink={onLink}
-                                        onKey={onArticleKey}
-                                        onCtxMenu={onCtxMenu}
-                                    />
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </>
-            )
-        }
-        return <div className={layout.centered}>Loading…</div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </>
+        )
     }
 }

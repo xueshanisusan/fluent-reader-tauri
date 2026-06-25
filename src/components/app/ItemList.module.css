@@ -1,8 +1,7 @@
 .container {
-    width: 280px;
-    border-right: 1px solid var(--border-default);
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    flex-shrink: 0;
 }
 
 /* shared row state — applies across all modes */
