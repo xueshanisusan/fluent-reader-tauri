@@ -3,45 +3,98 @@
     inset: 0;
     background: var(--bg-modal-overlay);
     z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
-.panel {
+.drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 480px;
+    max-width: 100vw;
     background: var(--bg-app);
     color: var(--text-primary);
-    width: 480px;
-    max-width: 90vw;
-    max-height: 80vh;
+    border-left: 1px solid var(--border-strong);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    animation: slideIn 200ms ease-out;
+    will-change: transform;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
 }
 
 .header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border-default);
     font-weight: 600;
 }
 
 .title {
     flex: 1;
+    font-size: 14px;
+}
+
+.pivot {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-default);
+    padding: 0 6px;
+    flex-shrink: 0;
+}
+
+.pivotItem {
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    position: relative;
+    transition: color 0.1s ease;
+}
+
+.pivotItem:hover {
+    color: var(--text-primary);
+}
+
+.pivotItemActive {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.pivotItemActive::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 1px;
 }
 
 .body {
     flex: 1;
     overflow-y: auto;
-    padding: 14px;
+    padding: 16px;
+    font-size: 13px;
+}
+
+.section {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    font-size: 13px;
 }
 
 .field {
@@ -123,4 +176,30 @@
 .opmlRow {
     display: flex;
     gap: 8px;
+}
+
+.aboutTitle {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.aboutVersion {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.aboutTagline {
+    margin-top: 4px;
+}
+
+.aboutLink {
+    margin-top: 12px;
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+    font-size: 13px;
+    text-decoration: underline;
 }
