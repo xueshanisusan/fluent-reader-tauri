@@ -15,14 +15,14 @@ import {
 } from "../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
-import { Header } from "./app/Header"
+import { NavBar } from "./app/NavBar"
+import { ArticleToolbar } from "./app/ArticleToolbar"
 import { SubscribeBar } from "./app/SubscribeBar"
 import { FilterBar } from "./app/FilterBar"
 import { ItemList } from "./app/ItemList"
 import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
-import { TitleBar } from "./app/TitleBar"
 import { useArticleList } from "./app/useArticleList"
 import { settings, type SettingsShape } from "../scripts/settings-bridge"
 import {
@@ -518,21 +518,15 @@ export function App(): React.ReactElement {
 
     return (
         <div className={layout.app}>
-            <TitleBar title="Fluent Reader" />
-            <Header
-                itemsCount={items ? items.length : null}
-                selectedItem={selectedItem}
+            <NavBar
                 refreshInFlight={refreshInFlight}
                 refreshStatus={refreshStatus}
                 hasUnread={hasUnread}
                 opmlBusy={opmlBusy}
                 searchQuery={searchInput}
                 onSearchChange={setSearchInput}
-                onToggleRead={onToggleRead}
-                onToggleStar={onToggleStar}
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
-                onRemountIframe={() => setRemount(n => n + 1)}
                 onImportOpml={onImportOpml}
                 onExportOpml={onExportOpml}
                 onOpenSettings={() => setSettingsOpen(true)}
@@ -623,15 +617,24 @@ export function App(): React.ReactElement {
                     />
                     <div className={layout.articlePane}>
                         {selectedItem && (
-                            <ArticleView
-                                key={`${selectedItem.iid}@${remount}`}
-                                html={selectedItem.content}
-                                articleId={`${selectedItem.iid}@${remount}`}
-                                hostStyle={hostStyle}
-                                onLink={onLink}
-                                onKey={onArticleKey}
-                                onCtxMenu={onCtxMenu}
-                            />
+                            <>
+                                <ArticleToolbar
+                                    item={selectedItem}
+                                    onToggleRead={onToggleRead}
+                                    onToggleStar={onToggleStar}
+                                />
+                                <div className={layout.articleViewport}>
+                                    <ArticleView
+                                        key={`${selectedItem.iid}@${remount}`}
+                                        html={selectedItem.content}
+                                        articleId={`${selectedItem.iid}@${remount}`}
+                                        hostStyle={hostStyle}
+                                        onLink={onLink}
+                                        onKey={onArticleKey}
+                                        onCtxMenu={onCtxMenu}
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
                 </>

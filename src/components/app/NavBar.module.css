@@ -1,0 +1,114 @@
+.bar {
+    display: flex;
+    align-items: stretch;
+    height: 32px;
+    background: var(--bg-header);
+    color: var(--text-on-header);
+    font-size: 12px;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: default;
+    min-width: 0;
+}
+
+.titleText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status {
+    font-size: 11px;
+    color: var(--text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.searchInput {
+    align-self: center;
+    width: 180px;
+    height: 22px;
+    margin-right: 8px;
+    padding: 0 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.searchInput:focus {
+    outline: 1px solid var(--accent);
+}
+
+.actions {
+    display: flex;
+    align-items: stretch;
+}
+
+.iconBtn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-on-header);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.08s ease;
+}
+
+.iconBtn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.iconBtn:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.iconBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.separator {
+    width: 1px;
+    margin: 6px 4px;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.windowControls {
+    display: flex;
+}
+
+.windowBtn {
+    composes: iconBtn;
+    width: 46px;
+}
+
+.closeBtn {
+    composes: windowBtn;
+}
+
+.closeBtn:hover:not(:disabled) {
+    background: #e81123;
+    color: #fff;
+}
+
+.closeBtn:active:not(:disabled) {
+    background: #c50f1f;
+    color: #fff;
+}
