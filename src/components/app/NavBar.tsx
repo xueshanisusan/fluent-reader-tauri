@@ -12,13 +12,10 @@ export interface NavBarProps {
     refreshInFlight: boolean
     refreshStatus: string | null
     hasUnread: boolean
-    opmlBusy: boolean
-    searchQuery: string
-    onSearchChange: (q: string) => void
+    onToggleSidebar: () => void
+    onToggleSearch: () => void
     onMarkAllRead: () => void
     onRefresh: () => void
-    onImportOpml: () => void
-    onExportOpml: () => void
     onOpenSettings: () => void
 }
 
@@ -27,13 +24,10 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         refreshInFlight,
         refreshStatus,
         hasUnread,
-        opmlBusy,
-        searchQuery,
-        onSearchChange,
+        onToggleSidebar,
+        onToggleSearch,
         onMarkAllRead,
         onRefresh,
-        onImportOpml,
-        onExportOpml,
         onOpenSettings,
     } = props
 
@@ -60,6 +54,13 @@ export function NavBar(props: NavBarProps): React.ReactElement {
 
     return (
         <div className={styles.bar}>
+            <button
+                className={styles.iconBtn}
+                onClick={onToggleSidebar}
+                aria-label="Toggle sidebar"
+                title="Toggle sidebar">
+                <MenuIcon />
+            </button>
             <div className={styles.title} data-tauri-drag-region>
                 <span className={styles.titleText} data-tauri-drag-region>
                     Fluent Reader
@@ -70,14 +71,6 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                     </span>
                 )}
             </div>
-            <input
-                className={styles.searchInput}
-                type="search"
-                placeholder="Search articles…"
-                aria-label="Search articles"
-                value={searchQuery}
-                onChange={e => onSearchChange(e.target.value)}
-            />
             <div className={styles.actions}>
                 <button
                     className={styles.iconBtn}
@@ -97,19 +90,10 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                 </button>
                 <button
                     className={styles.iconBtn}
-                    disabled={opmlBusy}
-                    onClick={onImportOpml}
-                    aria-label="Import OPML"
-                    title="Import OPML">
-                    <ImportIcon />
-                </button>
-                <button
-                    className={styles.iconBtn}
-                    disabled={opmlBusy}
-                    onClick={onExportOpml}
-                    aria-label="Export OPML"
-                    title="Export OPML">
-                    <ExportIcon />
+                    onClick={onToggleSearch}
+                    aria-label="Search articles"
+                    title="Search articles">
+                    <SearchIcon />
                 </button>
                 <button
                     className={styles.iconBtn}
@@ -147,7 +131,17 @@ export function NavBar(props: NavBarProps): React.ReactElement {
     )
 }
 
-// ---- Icons (12px inline SVGs, currentColor) ----
+// ---- Icons (inline SVGs, currentColor) ----
+
+function MenuIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="1.4" />
+            <rect x="2" y="7.3" width="12" height="1.4" />
+            <rect x="2" y="11.6" width="12" height="1.4" />
+        </svg>
+    )
+}
 
 function RefreshIcon(): React.ReactElement {
     return (
@@ -168,22 +162,11 @@ function InboxCheckIcon(): React.ReactElement {
     )
 }
 
-function ImportIcon(): React.ReactElement {
+function SearchIcon(): React.ReactElement {
     return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-            <path d="M8 1v9" />
-            <path d="M5 7l3 3 3-3" />
-            <path d="M2 13h12" />
-        </svg>
-    )
-}
-
-function ExportIcon(): React.ReactElement {
-    return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-            <path d="M8 11V2" />
-            <path d="M5 5l3-3 3 3" />
-            <path d="M2 13h12" />
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" />
+            <line x1="10.5" y1="10.5" x2="14" y2="14" strokeLinecap="round" />
         </svg>
     )
 }

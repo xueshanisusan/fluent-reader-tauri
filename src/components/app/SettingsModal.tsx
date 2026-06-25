@@ -9,8 +9,11 @@ import styles from "./SettingsModal.module.css"
 
 export interface SettingsModalProps {
     open: boolean
+    opmlBusy: boolean
     onClose: () => void
     onChanged: (next: SettingsShape) => void
+    onImportOpml: () => void
+    onExportOpml: () => void
 }
 
 type Draft = Pick<
@@ -25,7 +28,7 @@ const THEME_LABELS: Array<{ value: ThemeSettings; label: string }> = [
 ]
 
 export function SettingsModal(props: SettingsModalProps): React.ReactElement | null {
-    const { open, onClose, onChanged } = props
+    const { open, opmlBusy, onClose, onChanged, onImportOpml, onExportOpml } = props
     const [draft, setDraft] = React.useState<Draft | null>(null)
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
@@ -229,6 +232,31 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                 <span className={styles.hint}>
                                     Minutes between automatic refreshes when
                                     subscribing to a new feed. 0 = manual only.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Subscriptions
+                                </label>
+                                <div className={styles.opmlRow}>
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        disabled={opmlBusy}
+                                        onClick={onImportOpml}>
+                                        Import OPML…
+                                    </button>
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        disabled={opmlBusy}
+                                        onClick={onExportOpml}>
+                                        Export OPML…
+                                    </button>
+                                </div>
+                                <span className={styles.hint}>
+                                    Import: merges new feeds into your current
+                                    list. Export: saves all subscriptions to a
+                                    file.
                                 </span>
                             </div>
 

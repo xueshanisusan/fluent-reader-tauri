@@ -17,6 +17,7 @@ import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
 import { NavBar } from "./app/NavBar"
 import { ArticleToolbar } from "./app/ArticleToolbar"
+import { SearchBar } from "./app/SearchBar"
 import { SubscribeBar } from "./app/SubscribeBar"
 import { FilterBar } from "./app/FilterBar"
 import { ItemList } from "./app/ItemList"
@@ -113,6 +114,8 @@ export function App(): React.ReactElement {
     const [opmlBusy, setOpmlBusy] = React.useState(false)
     const [settingsOpen, setSettingsOpen] = React.useState(false)
     const [rulesModalSid, setRulesModalSid] = React.useState<number | null>(null)
+    const [sidebarVisible, setSidebarVisible] = React.useState(true)
+    const [searchBarVisible, setSearchBarVisible] = React.useState(false)
     const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
         null
     )
@@ -522,15 +525,28 @@ export function App(): React.ReactElement {
                 refreshInFlight={refreshInFlight}
                 refreshStatus={refreshStatus}
                 hasUnread={hasUnread}
-                opmlBusy={opmlBusy}
-                searchQuery={searchInput}
-                onSearchChange={setSearchInput}
+                onToggleSidebar={() => setSidebarVisible(v => !v)}
+                onToggleSearch={() => {
+                    setSearchBarVisible(v => {
+                        const next = !v
+                        if (!next) setSearchInput("")
+                        return next
+                    })
+                }}
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
-                onImportOpml={onImportOpml}
-                onExportOpml={onExportOpml}
                 onOpenSettings={() => setSettingsOpen(true)}
             />
+            {searchBarVisible && (
+                <SearchBar
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    onClose={() => {
+                        setSearchBarVisible(false)
+                        setSearchInput("")
+                    }}
+                />
+            )}
             <input
                 ref={fileInputRef}
                 type="file"
@@ -540,8 +556,11 @@ export function App(): React.ReactElement {
             />
             <SettingsModal
                 open={settingsOpen}
+                opmlBusy={opmlBusy}
                 onClose={() => setSettingsOpen(false)}
                 onChanged={setAppSettings}
+                onImportOpml={onImportOpml}
+                onExportOpml={onExportOpml}
             />
             <RulesModal
                 sourceId={rulesModalSid}
@@ -563,18 +582,20 @@ export function App(): React.ReactElement {
             />
             <FilterBar filter={filter} onChange={setFilter} />
             <div className={layout.body}>
-                <Sidebar
-                    sources={sources}
-                    groups={groups}
-                    unreadCounts={unreadCounts}
-                    selectedSourceId={selectedSourceId}
-                    expandedGroups={expandedGroups}
-                    onSelectSource={onSelectSource}
-                    onToggleGroup={onToggleGroup}
-                    onRenameSource={onRenameSource}
-                    onEditRules={setRulesModalSid}
-                    onDeleteSource={onDeleteSource}
-                />
+                {sidebarVisible && (
+                    <Sidebar
+                        sources={sources}
+                        groups={groups}
+                        unreadCounts={unreadCounts}
+                        selectedSourceId={selectedSourceId}
+                        expandedGroups={expandedGroups}
+                        onSelectSource={onSelectSource}
+                        onToggleGroup={onToggleGroup}
+                        onRenameSource={onRenameSource}
+                        onEditRules={setRulesModalSid}
+                        onDeleteSource={onDeleteSource}
+                    />
+                )}
                 {renderBody()}
             </div>
         </div>
