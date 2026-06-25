@@ -26,6 +26,7 @@ import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
 import { settings, type SettingsShape } from "../scripts/settings-bridge"
+import { useLogStore } from "../scripts/log-store"
 import {
     getResolvedTheme,
     onResolvedThemeChange,
@@ -122,6 +123,14 @@ export function App(): React.ReactElement {
     const [resolvedTheme, setResolvedTheme] = React.useState<Resolved>(() =>
         getResolvedTheme()
     )
+    const logs = useLogStore()
+    // startAutoRefresh runs in an effect that should not re-subscribe on every
+    // sources change. We keep a ref mirroring `sources` so the auto-tick log
+    // append can resolve names by sid without putting `sources` in the deps.
+    const sourcesRef = React.useRef<Source[]>([])
+    React.useEffect(() => {
+        sourcesRef.current = sources
+    }, [sources])
 
     React.useEffect(() => {
         const unsub = onResolvedThemeChange(setResolvedTheme)
@@ -205,6 +214,10 @@ export function App(): React.ReactElement {
                 setRefreshStatus(
                     `auto: ${results.length} checked · ${inserted} new`
                 )
+                const names = new Map(
+                    sourcesRef.current.map(s => [s.sid, s.name])
+                )
+                logs.appendRefreshResults(results, names, "auto")
                 void loadItems()
             },
             onError: e => {
@@ -212,7 +225,7 @@ export function App(): React.ReactElement {
             },
         })
         return stop
-    }, [loadItems])
+    }, [loadItems, logs])
 
     const finalizeSubscribe = React.useCallback(
         async (feed: DiscoveredFeed) => {
@@ -293,11 +306,15 @@ export function App(): React.ReactElement {
         if (refreshInFlight) return
         setRefreshInFlight(true)
         setRefreshStatus("refreshing…")
+        // Capture source names BEFORE the await so a delete/rename mid-refresh
+        // can't blank out the log row's display name.
+        const names = new Map(sources.map(s => [s.sid, s.name]))
         try {
             const sids = sources.map(s => s.sid)
             const results = await refreshAll(sids)
             if (cancelledRef.current) return
             setRefreshStatus(formatRefreshSummary(results))
+            logs.appendRefreshResults(results, names, "manual")
             await loadItems()
         } catch (e) {
             if (cancelledRef.current) return
@@ -307,7 +324,7 @@ export function App(): React.ReactElement {
         } finally {
             if (!cancelledRef.current) setRefreshInFlight(false)
         }
-    }, [refreshInFlight, loadItems, sources])
+    }, [refreshInFlight, loadItems, sources, logs])
 
     const onSelectSource = React.useCallback((sid: number | null) => {
         setSelectedSourceId(sid)
@@ -393,6 +410,7 @@ export function App(): React.ReactElement {
                         summary.groupsCreated === 1 ? "" : "s"
                     }`
                 )
+                logs.appendOpmlImport(summary)
                 await loadSourcesAndGroups()
                 await loadItems()
             } catch (err) {
@@ -405,11 +423,12 @@ export function App(): React.ReactElement {
                         ? `OPML import failed (${kind}): ${message}`
                         : `OPML import failed: ${message}`
                 )
+                logs.appendOpmlImportError({ kind, message })
             } finally {
                 if (!cancelledRef.current) setOpmlBusy(false)
             }
         },
-        [loadItems, loadSourcesAndGroups]
+        [loadItems, loadSourcesAndGroups, logs]
     )
 
     const onExportOpml = React.useCallback(async () => {
@@ -429,6 +448,7 @@ export function App(): React.ReactElement {
             // Revoke after a tick so the browser has time to start the download.
             window.setTimeout(() => URL.revokeObjectURL(url), 1000)
             setRefreshStatus(`OPML exported · ${xml.length} bytes`)
+            logs.appendOpmlExportSuccess(xml.length)
         } catch (err) {
             if (cancelledRef.current) return
             const er = err as { kind?: string; message?: string } | Error
@@ -439,10 +459,11 @@ export function App(): React.ReactElement {
                     ? `OPML export failed (${kind}): ${message}`
                     : `OPML export failed: ${message}`
             )
+            logs.appendOpmlExportError({ kind, message })
         } finally {
             if (!cancelledRef.current) setOpmlBusy(false)
         }
-    }, [])
+    }, [logs])
 
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
@@ -525,6 +546,7 @@ export function App(): React.ReactElement {
                 refreshInFlight={refreshInFlight}
                 refreshStatus={refreshStatus}
                 hasUnread={hasUnread}
+                logEntries={logs.entries}
                 onToggleSidebar={() => setSidebarVisible(v => !v)}
                 onToggleSearch={() => {
                     setSearchBarVisible(v => {
@@ -536,6 +558,8 @@ export function App(): React.ReactElement {
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
                 onOpenSettings={() => setSettingsOpen(true)}
+                onJumpToSource={setSelectedSourceId}
+                onClearLogs={logs.clear}
             />
             {searchBarVisible && (
                 <SearchBar

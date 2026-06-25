@@ -1,4 +1,5 @@
 .bar {
+    position: relative;
     display: flex;
     align-items: stretch;
     height: 32px;
