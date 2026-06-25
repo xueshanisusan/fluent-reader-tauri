@@ -57,6 +57,40 @@
     font-weight: 600;
 }
 
+.subsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px 6px 12px;
+}
+
+.subsHeaderLabel {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.addBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.addBtn:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+}
+
 .groupHeader {
     display: flex;
     align-items: center;
