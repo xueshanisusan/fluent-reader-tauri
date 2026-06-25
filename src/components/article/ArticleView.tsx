@@ -1,6 +1,7 @@
 import * as React from "react"
 import { sanitize } from "../../scripts/article-sanitize"
 import { buildSrcdoc, type IframeMessage, type HostStyle } from "./iframe-bootstrap"
+import styles from "./ArticleView.module.css"
 
 export interface ArticleViewProps {
     html: string
@@ -93,7 +94,7 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
 
     if (srcdoc === null) {
         return (
-            <div style={{ padding: 24, color: "#a00" }}>
+            <div className={styles.error}>
                 无法显示这篇文章（内部错误）
             </div>
         )
@@ -106,7 +107,7 @@ export function ArticleView(props: ArticleViewProps): React.ReactElement {
             sandbox="allow-scripts"
             srcDoc={srcdoc}
             referrerPolicy="no-referrer"
-            style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+            className={styles.iframe}
             title="article"
         />
     )
