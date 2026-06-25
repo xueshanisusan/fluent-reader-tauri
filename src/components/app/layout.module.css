@@ -20,6 +20,14 @@
     flex: 1;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.articleViewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
 }
 
 .centered {
