@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { LogEntry } from "../../scripts/log-store"
 import {
     closeWindow,
     isWindowMaximized,
@@ -6,17 +7,21 @@ import {
     onMaximizeChange,
     toggleMaximizeWindow,
 } from "../../scripts/window-bridge"
+import { LogsPanel } from "./LogsPanel"
 import styles from "./NavBar.module.css"
 
 export interface NavBarProps {
     refreshInFlight: boolean
     refreshStatus: string | null
     hasUnread: boolean
+    logEntries: ReadonlyArray<LogEntry>
     onToggleSidebar: () => void
     onToggleSearch: () => void
     onMarkAllRead: () => void
     onRefresh: () => void
     onOpenSettings: () => void
+    onJumpToSource: (sid: number) => void
+    onClearLogs: () => void
 }
 
 export function NavBar(props: NavBarProps): React.ReactElement {
@@ -24,14 +29,18 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         refreshInFlight,
         refreshStatus,
         hasUnread,
+        logEntries,
         onToggleSidebar,
         onToggleSearch,
         onMarkAllRead,
         onRefresh,
         onOpenSettings,
+        onJumpToSource,
+        onClearLogs,
     } = props
 
     const [maximized, setMaximized] = React.useState(false)
+    const [logsOpen, setLogsOpen] = React.useState(false)
 
     React.useEffect(() => {
         let unlisten: (() => void) | null = null
@@ -90,6 +99,15 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                 </button>
                 <button
                     className={styles.iconBtn}
+                    data-logs-bell
+                    onClick={() => setLogsOpen(v => !v)}
+                    aria-label="Show logs"
+                    aria-expanded={logsOpen}
+                    title="Show logs">
+                    <BellIcon />
+                </button>
+                <button
+                    className={styles.iconBtn}
                     onClick={onToggleSearch}
                     aria-label="Search articles"
                     title="Search articles">
@@ -127,6 +145,14 @@ export function NavBar(props: NavBarProps): React.ReactElement {
                     <CloseIcon />
                 </button>
             </div>
+            {logsOpen && (
+                <LogsPanel
+                    entries={logEntries}
+                    onJumpToSource={onJumpToSource}
+                    onClear={onClearLogs}
+                    onClose={() => setLogsOpen(false)}
+                />
+            )}
         </div>
     )
 }
@@ -167,6 +193,16 @@ function SearchIcon(): React.ReactElement {
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
             <line x1="10.5" y1="10.5" x2="14" y2="14" strokeLinecap="round" />
+        </svg>
+    )
+}
+
+function BellIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+            <path d="M3.5 11.5V7.5a4.5 4.5 0 0 1 9 0v4" />
+            <path d="M2.5 11.5h11" />
+            <path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" />
         </svg>
     )
 }
