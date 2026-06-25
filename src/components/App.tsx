@@ -22,6 +22,7 @@ import { ItemList } from "./app/ItemList"
 import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
+import { TitleBar } from "./app/TitleBar"
 import { useArticleList } from "./app/useArticleList"
 import { settings, type SettingsShape } from "../scripts/settings-bridge"
 import {
@@ -517,6 +518,7 @@ export function App(): React.ReactElement {
 
     return (
         <div className={layout.app}>
+            <TitleBar title="Fluent Reader" />
             <Header
                 itemsCount={items ? items.length : null}
                 selectedItem={selectedItem}
