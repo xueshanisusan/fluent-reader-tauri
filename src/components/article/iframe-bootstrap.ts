@@ -41,11 +41,12 @@ const HOST_DARK_OVERRIDE = `
 
 export const HOST_BASE_CSS = `
   :root { color-scheme: light dark; }
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  html { background: var(--fr-bg, #fff); }
   body {
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     font-size: 16px; line-height: 1.6;
-    max-width: 720px; margin: 0 auto; padding: 24px;
+    padding: 24px 32px;
     color: var(--fr-fg, #222); background: var(--fr-bg, #fff);
   }
   a { color: var(--fr-link, #06c); }
