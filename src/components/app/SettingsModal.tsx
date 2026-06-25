@@ -5,6 +5,8 @@ import {
     type SettingsShape,
 } from "../../scripts/settings-bridge"
 import { setTheme } from "../../scripts/theme"
+import { openExternal } from "../../scripts/shell-bridge"
+import pkg from "../../../package.json"
 import styles from "./SettingsModal.module.css"
 
 export interface SettingsModalProps {
@@ -21,17 +23,29 @@ type Draft = Pick<
     "theme" | "fontSize" | "fontFamily" | "fetchInterval" | "notificationsEnabled"
 >
 
+type Tab = "application" | "subscriptions" | "about"
+
 const THEME_LABELS: Array<{ value: ThemeSettings; label: string }> = [
     { value: ThemeSettings.Default, label: "System" },
     { value: ThemeSettings.Light, label: "Light" },
     { value: ThemeSettings.Dark, label: "Dark" },
 ]
 
+const PIVOT_ITEMS: Array<{ value: Tab; label: string }> = [
+    { value: "application", label: "Application" },
+    { value: "subscriptions", label: "Subscriptions" },
+    { value: "about", label: "About" },
+]
+
+const APP_VERSION = pkg.version
+const REPO_URL = "https://github.com/yang991178/fluent-reader"
+
 export function SettingsModal(props: SettingsModalProps): React.ReactElement | null {
     const { open, opmlBusy, onClose, onChanged, onImportOpml, onExportOpml } = props
     const [draft, setDraft] = React.useState<Draft | null>(null)
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
+    const [tab, setTab] = React.useState<Tab>("application")
 
     React.useEffect(() => {
         if (!open) {
@@ -39,6 +53,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             setError(null)
             return
         }
+        setTab("application")
         let cancelled = false
         void (async () => {
             try {
@@ -60,6 +75,15 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             cancelled = true
         }
     }, [open])
+
+    React.useEffect(() => {
+        if (!open) return
+        function onKey(e: KeyboardEvent): void {
+            if (e.key === "Escape") onClose()
+        }
+        window.addEventListener("keydown", onKey)
+        return () => window.removeEventListener("keydown", onKey)
+    }, [open, onClose])
 
     const onSave = React.useCallback(async () => {
         if (!draft) return
@@ -96,11 +120,17 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         }
     }, [draft, onChanged, onClose])
 
+    const openRepo = React.useCallback(() => {
+        openExternal(REPO_URL).catch(e =>
+            console.error("[SettingsModal] open repo failed", e)
+        )
+    }, [])
+
     if (!open) return null
 
     return (
         <div className={styles.overlay} onClick={onClose}>
-            <div className={styles.panel} onClick={e => e.stopPropagation()}>
+            <div className={styles.drawer} onClick={e => e.stopPropagation()} role="dialog" aria-label="Settings">
                 <div className={styles.header}>
                     <span className={styles.title}>Settings</span>
                     <button
@@ -109,11 +139,23 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                         Close
                     </button>
                 </div>
+                <div className={styles.pivot} role="tablist">
+                    {PIVOT_ITEMS.map(p => (
+                        <button
+                            key={p.value}
+                            role="tab"
+                            aria-selected={tab === p.value}
+                            className={`${styles.pivotItem} ${tab === p.value ? styles.pivotItemActive : ""}`}
+                            onClick={() => setTab(p.value)}>
+                            {p.label}
+                        </button>
+                    ))}
+                </div>
                 <div className={styles.body}>
-                    {draft === null ? (
+                    {draft === null && tab === "application" ? (
                         <div>Loading…</div>
-                    ) : (
-                        <>
+                    ) : tab === "application" && draft !== null ? (
+                        <div className={styles.section}>
                             <div className={styles.field}>
                                 <label className={styles.label}>Theme</label>
                                 <div className={styles.radioGroup}>
@@ -235,9 +277,17 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                 </span>
                             </div>
 
+                            {error && (
+                                <div className={styles.errorMessage}>
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+                    ) : tab === "subscriptions" ? (
+                        <div className={styles.section}>
                             <div className={styles.field}>
                                 <label className={styles.label}>
-                                    Subscriptions
+                                    OPML
                                 </label>
                                 <div className={styles.opmlRow}>
                                     <button
@@ -254,19 +304,30 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                     </button>
                                 </div>
                                 <span className={styles.hint}>
-                                    Import: merges new feeds into your current
-                                    list. Export: saves all subscriptions to a
+                                    Import merges new feeds into your current
+                                    list. Export saves all subscriptions to a
                                     file.
                                 </span>
                             </div>
-
-                            {error && (
-                                <div className={styles.errorMessage}>
-                                    {error}
-                                </div>
-                            )}
-                        </>
-                    )}
+                        </div>
+                    ) : tab === "about" ? (
+                        <div className={styles.section}>
+                            <div className={styles.aboutTitle}>
+                                Fluent Reader
+                            </div>
+                            <div className={styles.aboutVersion}>
+                                Version {APP_VERSION} · Tauri build
+                            </div>
+                            <div className={styles.aboutTagline}>
+                                A modern desktop RSS reader.
+                            </div>
+                            <button
+                                className={styles.aboutLink}
+                                onClick={openRepo}>
+                                View project on GitHub
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
                 <div className={styles.footer}>
                     <button
@@ -278,7 +339,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     <button
                         className={styles.btn}
                         onClick={onSave}
-                        disabled={!draft || saving}>
+                        disabled={!draft || saving || tab !== "application"}>
                         {saving ? "Saving…" : "Save"}
                     </button>
                 </div>
