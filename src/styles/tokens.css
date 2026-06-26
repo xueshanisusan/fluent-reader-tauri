@@ -36,6 +36,11 @@
     --danger: #c33;
     --star: #e6b800;
 
+    /* Card cover/meta accents (match original Fluent Reader). */
+    --unread: #ffaa44;
+    --blur: blur(20px);
+    --card-overlay: rgba(255, 255, 255, 0.73);
+
     --btn-bg: #444;
     --btn-text: #fff;
 
@@ -79,6 +84,10 @@
     --accent-text: #fff;
     --danger: #e55;
     --star: #e6b800;
+
+    --unread: #ffaa44;
+    --blur: blur(20px);
+    --card-overlay: rgba(40, 40, 40, 0.66);
 
     --btn-bg: #333;
     --btn-text: #e8e8e8;

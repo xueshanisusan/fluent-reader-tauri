@@ -1,12 +1,19 @@
 import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
 import { ViewType, isGridView } from "../../scripts/settings-bridge"
+import { CardInfo } from "./CardInfo"
 import styles from "./ItemList.module.css"
+
+export interface SourceMeta {
+    name: string
+    iconUrl: string | null
+}
 
 export interface ItemListProps {
     items: Item[]
     selectedIid: number | null
     viewMode: ViewType
+    sources?: ReadonlyMap<number, SourceMeta>
     onSelect: (it: Item) => void
 }
 
@@ -17,7 +24,7 @@ function containerClass(viewMode: ViewType): string {
 }
 
 export function ItemList(props: ItemListProps): React.ReactElement {
-    const { items, selectedIid, viewMode, onSelect } = props
+    const { items, selectedIid, viewMode, sources, onSelect } = props
     return (
         <div className={containerClass(viewMode)}>
             {items.map(it => {
@@ -58,6 +65,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 key={it.iid}
                                 item={it}
                                 selected={selected}
+                                source={sources?.get(it.sourceId)}
                                 onSelect={onSelect}
                             />
                         )
@@ -70,6 +78,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
 interface RowProps {
     item: Item
     selected: boolean
+    source?: SourceMeta
     onSelect: (it: Item) => void
 }
 
@@ -118,33 +127,49 @@ function CompactRow(props: RowProps): React.ReactElement {
     )
 }
 
+// Faithful port of the original default-card (fixed 256×264 tile). With a
+// cover image: blurred backdrop + frosted overlay + 144px cover on top + info
+// + title (no snippet — no room without the hover slide we deliberately skip).
+// Without an image (the common case for text feeds): info + title + a long
+// snippet filling the card.
 function CardsRow(props: RowProps): React.ReactElement {
-    const { item, selected, onSelect } = props
+    const { item, source, onSelect } = props
     const [imgOk, setImgOk] = React.useState(true)
     const showThumb = !!item.thumb && imgOk
     return (
         <div
-            className={rowClass(styles.rowCard, item, selected)}
+            className={`${styles.card} ${styles.defaultCard}`}
             onClick={() => onSelect(item)}>
             {showThumb && (
                 <img
-                    className={styles.thumb}
+                    className={styles.bgImg}
                     src={item.thumb!}
                     alt=""
-                    loading="lazy"
+                    aria-hidden="true"
                     onError={() => setImgOk(false)}
                 />
             )}
-            <div className={styles.title}>
-                {item.title}
-                {item.starred && <span className={styles.star}>★</span>}
-            </div>
-            {item.snippet && (
-                <div className={styles.snippet}>{item.snippet}</div>
+            {showThumb && <div className={styles.bgOverlay} />}
+            {showThumb && (
+                <img
+                    className={styles.head}
+                    src={item.thumb!}
+                    alt=""
+                    loading="lazy"
+                />
             )}
-            <div className={styles.date}>
-                {new Date(item.dateMs).toLocaleString()}
-            </div>
+            <CardInfo
+                name={source?.name}
+                iconUrl={source?.iconUrl}
+                creator={item.creator}
+                starred={item.starred}
+                hasRead={item.hasRead}
+                dateMs={item.dateMs}
+            />
+            <h3 className={styles.cardTitle}>{item.title}</h3>
+            {!showThumb && item.snippet && (
+                <p className={styles.cardSnippet}>{item.snippet}</p>
+            )}
         </div>
     )
 }

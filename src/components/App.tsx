@@ -166,6 +166,17 @@ export function App(): React.ReactElement {
         [appSettings?.fontSize, appSettings?.fontFamily, resolvedTheme]
     )
 
+    // sid → {name, iconUrl} for the card meta line (favicon + source name).
+    const sourceMeta = React.useMemo(
+        () =>
+            new Map(
+                sources.map(
+                    s => [s.sid, { name: s.name, iconUrl: s.iconUrl }] as const
+                )
+            ),
+        [sources]
+    )
+
     const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cancelledRef = React.useRef(false)
     React.useEffect(() => {
@@ -720,6 +731,7 @@ export function App(): React.ReactElement {
                             items={items}
                             selectedIid={selectedItem?.iid ?? null}
                             viewMode={view}
+                            sources={sourceMeta}
                             onSelect={setSelectedItem}
                         />
                     )}
@@ -755,6 +767,7 @@ export function App(): React.ReactElement {
                             items={items}
                             selectedIid={selectedItem?.iid ?? null}
                             viewMode={view}
+                            sources={sourceMeta}
                             onSelect={setSelectedItem}
                         />
                     )}
