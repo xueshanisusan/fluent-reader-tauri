@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
-import { ViewType } from "../../scripts/settings-bridge"
+import { ViewType, isGridView } from "../../scripts/settings-bridge"
 import styles from "./ItemList.module.css"
 
 export interface ItemListProps {
@@ -10,10 +10,16 @@ export interface ItemListProps {
     onSelect: (it: Item) => void
 }
 
+function containerClass(viewMode: ViewType): string {
+    if (viewMode === ViewType.Magazine) return styles.containerMagazine
+    if (isGridView(viewMode)) return styles.containerCards
+    return styles.container
+}
+
 export function ItemList(props: ItemListProps): React.ReactElement {
     const { items, selectedIid, viewMode, onSelect } = props
     return (
-        <div className={styles.container}>
+        <div className={containerClass(viewMode)}>
             {items.map(it => {
                 const selected = selectedIid === it.iid
                 switch (viewMode) {
@@ -35,8 +41,16 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 onSelect={onSelect}
                             />
                         )
-                    case ViewType.Cards:
                     case ViewType.Magazine:
+                        return (
+                            <MagazineRow
+                                key={it.iid}
+                                item={it}
+                                selected={selected}
+                                onSelect={onSelect}
+                            />
+                        )
+                    case ViewType.Cards:
                     case ViewType.Customized:
                     default:
                         return (
@@ -130,6 +144,39 @@ function CardsRow(props: RowProps): React.ReactElement {
             )}
             <div className={styles.date}>
                 {new Date(item.dateMs).toLocaleString()}
+            </div>
+        </div>
+    )
+}
+
+function MagazineRow(props: RowProps): React.ReactElement {
+    const { item, selected, onSelect } = props
+    const [imgOk, setImgOk] = React.useState(true)
+    const showThumb = !!item.thumb && imgOk
+    return (
+        <div
+            className={rowClass(styles.rowMagazine, item, selected)}
+            onClick={() => onSelect(item)}>
+            {showThumb && (
+                <img
+                    className={styles.magThumb}
+                    src={item.thumb!}
+                    alt=""
+                    loading="lazy"
+                    onError={() => setImgOk(false)}
+                />
+            )}
+            <div className={styles.magBody}>
+                <div className={styles.title}>
+                    {item.title}
+                    {item.starred && <span className={styles.star}>★</span>}
+                </div>
+                {item.snippet && (
+                    <div className={styles.magSnippet}>{item.snippet}</div>
+                )}
+                <div className={styles.date}>
+                    {new Date(item.dateMs).toLocaleString()}
+                </div>
             </div>
         </div>
     )

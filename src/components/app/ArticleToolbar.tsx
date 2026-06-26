@@ -6,14 +6,24 @@ export interface ArticleToolbarProps {
     item: Item
     onToggleRead: () => void
     onToggleStar: () => void
+    onClose?: () => void
 }
 
 export function ArticleToolbar(
     props: ArticleToolbarProps
 ): React.ReactElement {
-    const { item, onToggleRead, onToggleStar } = props
+    const { item, onToggleRead, onToggleStar, onClose } = props
     return (
         <div className={styles.bar}>
+            {onClose && (
+                <button
+                    className={styles.iconBtn}
+                    onClick={onClose}
+                    aria-label="Back to list"
+                    title="Back">
+                    <BackIcon />
+                </button>
+            )}
             <span className={styles.title}>{item.title}</span>
             <button
                 className={styles.iconBtn}
@@ -30,6 +40,14 @@ export function ArticleToolbar(
                 {item.starred ? <StarFilledIcon /> : <StarOutlineIcon />}
             </button>
         </div>
+    )
+}
+
+function BackIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 3L5 8l5 5" />
+        </svg>
     )
 }
 

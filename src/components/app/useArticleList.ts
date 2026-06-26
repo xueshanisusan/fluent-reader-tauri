@@ -7,6 +7,10 @@ export type Filter = "all" | "unread" | "starred"
 export interface UseArticleListOptions {
     sourceId: number | null
     searchQuery: string
+    // Split views (List/Compact) auto-open the first article in the side pane.
+    // Grid views (Cards/Magazine) must NOT — the user lands on the grid and the
+    // article overlay only opens on click. Defaults to true.
+    autoSelectFirst?: boolean
 }
 
 export interface UseArticleList {
@@ -30,6 +34,7 @@ export interface UseArticleList {
 
 export function useArticleList(opts: UseArticleListOptions): UseArticleList {
     const { sourceId, searchQuery } = opts
+    const autoSelectFirst = opts.autoSelectFirst ?? true
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
     const [listLoading, setListLoading] = React.useState(false)
@@ -74,10 +79,12 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
                   })
             if (cancelledRef.current) return
             setItems(list)
-            setSelectedItem(prev => {
-                if (prev && list.some(i => i.iid === prev.iid)) return prev
-                return list.length > 0 ? list[0] : null
-            })
+            // Preserve a still-valid selection across reloads; otherwise the
+            // auto-select-first effect below decides whether to pick list[0]
+            // (split views) or leave it null (grid views).
+            setSelectedItem(prev =>
+                prev && list.some(i => i.iid === prev.iid) ? prev : null
+            )
             // Search is a view — don't re-fetch sidebar unread counts.
             if (!trimmedQuery) void reloadUnreadCounts()
         } catch (e) {
@@ -95,6 +102,18 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
             cancelledRef.current = true
         }
     }, [loadItems])
+
+    // Split views auto-open the first article once a list is present and nothing
+    // valid is selected. Grid views opt out (autoSelectFirst=false) so the
+    // overlay only opens on an explicit click. Keyed on items + the flag so it
+    // also fires when settings resolve and flip the layout family on cold start.
+    React.useEffect(() => {
+        if (!autoSelectFirst) return
+        if (!items || items.length === 0) return
+        setSelectedItem(prev =>
+            prev && items.some(i => i.iid === prev.iid) ? prev : items[0]
+        )
+    }, [autoSelectFirst, items])
 
     const bumpUnread = React.useCallback(
         (sid: number, delta: number) => {
