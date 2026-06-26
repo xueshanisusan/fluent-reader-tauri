@@ -25,6 +25,72 @@ fn find_header<'a>(headers: &'a [(String, String)], key: &str) -> Option<&'a str
         .map(|(_, v)| v.as_str())
 }
 
+/// First `<img src>` in an HTML fragment, resolved to an absolute URL against
+/// the article `link`. Returns None when there is no `<img>` or the first one
+/// has an empty src. The http(s) gate is applied by the caller, so a relative
+/// src that fails to resolve falls through to rejection there.
+fn first_img_src(html: &str, link: &str) -> Option<String> {
+    let doc = scraper::Html::parse_fragment(html);
+    let selector = scraper::Selector::parse("img[src]").expect("static selector parses");
+    let src = doc
+        .select(&selector)
+        .filter_map(|el| el.value().attr("src"))
+        .map(str::trim)
+        .find(|s| !s.is_empty())?;
+    // Resolve relative URLs against the FULL article link (RFC 3986). The
+    // original resolved against the link's origin only (item.ts:90), which
+    // mishandles path-relative srcs like `images/x.png`; using the full link
+    // as base is strictly more correct for well-formed feeds and identical for
+    // absolute and root-relative srcs. If the link won't parse, hand back the
+    // raw src and let the caller's http(s) gate drop it if it's relative.
+    match reqwest::Url::parse(link) {
+        Ok(base) => base.join(src).map(|u| u.to_string()).ok(),
+        Err(_) => Some(src.to_string()),
+    }
+}
+
+/// Cover-image URL for an entry, mirroring the original Fluent Reader's
+/// `parseContent` cascade (src/scripts/models/item.ts:73-102):
+///   1. media:thumbnail
+///   2. (original also checks the channel `<image>`; feed-rs doesn't surface it
+///      per-entry, so it's intentionally omitted here)
+///   3. media:content whose MIME type is `image/*`. The original filters on the
+///      `media:medium="image"` attribute, which feed-rs does not model; the MIME
+///      check is the closest feed-rs-native proxy — an intentional adaptation,
+///      not an exact port.
+///   4. the first `<img src>` in the content HTML.
+/// Any candidate that isn't an absolute http(s) URL after resolution is rejected
+/// (matches the original's final guard), filtering data:, javascript:, and
+/// protocol-relative URLs.
+fn extract_thumb(
+    media: &[feed_rs::model::MediaObject],
+    content: Option<&str>,
+    link: &str,
+) -> Option<String> {
+    let candidate = media
+        .iter()
+        .flat_map(|m| &m.thumbnails)
+        .next()
+        .map(|t| t.image.uri.clone())
+        .or_else(|| {
+            media
+                .iter()
+                .flat_map(|m| &m.content)
+                .find(|c| {
+                    c.content_type
+                        .as_ref()
+                        .map_or(false, |ct| ct.to_string().to_ascii_lowercase().starts_with("image/"))
+                })
+                .and_then(|c| c.url.as_ref())
+                .map(|u| u.to_string())
+        })
+        .or_else(|| content.and_then(|html| first_img_src(html, link)));
+
+    // Final guard, matching the original (item.ts:96-100): keep only absolute
+    // http(s) URLs. Case-sensitive, like the original `startsWith("https://")`.
+    candidate.filter(|s| s.starts_with("http://") || s.starts_with("https://"))
+}
+
 fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<NewItem> {
     let link = entry.links.first().map(|l| l.href.clone())?;
     let title = entry
@@ -46,12 +112,7 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
         .into_iter()
         .next()
         .map(|p| p.name);
-    let thumb = entry
-        .media
-        .into_iter()
-        .flat_map(|m| m.thumbnails)
-        .next()
-        .map(|t| t.image.uri);
+    let thumb = extract_thumb(&entry.media, content.as_deref(), &link);
     // feed-rs always sets entry.id (synthesizes a stable hash when the feed
     // omits <guid>/atom:id). Empty string is theoretical but normalize to None.
     let guid = if entry.id.is_empty() { None } else { Some(entry.id) };
@@ -305,4 +366,162 @@ pub async fn feeds_discover(
     url: String,
 ) -> Result<Vec<DiscoveredFeed>, DiscoveryError> {
     discover(&url).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use feed_rs::model::{Image, MediaContent, MediaObject, MediaThumbnail};
+
+    fn image(uri: &str) -> Image {
+        Image {
+            uri: uri.to_string(),
+            title: None,
+            link: None,
+            width: None,
+            height: None,
+            description: None,
+        }
+    }
+
+    // MediaObject derives Default; MediaContent/MediaThumbnail/Image do not, so
+    // build those with full struct literals. MediaTypeBuf and Url are produced
+    // via `.parse()` with inference, avoiding extra imports of transitive crates.
+    fn thumb_media(uri: &str) -> MediaObject {
+        MediaObject {
+            thumbnails: vec![MediaThumbnail {
+                image: image(uri),
+                time: None,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn content_media(url: &str, content_type: Option<&str>) -> MediaObject {
+        MediaObject {
+            content: vec![MediaContent {
+                url: Some(url.parse().unwrap()),
+                content_type: content_type.map(|c| c.parse().unwrap()),
+                height: None,
+                width: None,
+                duration: None,
+                size: None,
+                rating: None,
+            }],
+            ..Default::default()
+        }
+    }
+
+    const LINK: &str = "https://site.com/blog/post";
+
+    #[test]
+    fn thumbnail_wins_over_content_img() {
+        let media = vec![thumb_media("https://cdn.example.com/thumb.jpg")];
+        let html = Some("<p><img src=\"https://cdn.example.com/inline.jpg\"></p>");
+        assert_eq!(
+            extract_thumb(&media, html, LINK),
+            Some("https://cdn.example.com/thumb.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn media_content_image_used_when_no_thumbnail() {
+        let media = vec![content_media("https://cdn.example.com/a.png", Some("image/png"))];
+        assert_eq!(
+            extract_thumb(&media, None, LINK),
+            Some("https://cdn.example.com/a.png".to_string())
+        );
+    }
+
+    #[test]
+    fn media_content_non_image_falls_through_to_img() {
+        let media = vec![content_media("https://cdn.example.com/clip.mp4", Some("video/mp4"))];
+        let html = Some("<p><img src=\"https://cdn.example.com/b.jpg\"></p>");
+        assert_eq!(
+            extract_thumb(&media, html, LINK),
+            Some("https://cdn.example.com/b.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn media_content_beats_img() {
+        let media = vec![content_media("https://cdn.example.com/m.png", Some("image/png"))];
+        let html = Some("<img src=\"https://cdn.example.com/inline.jpg\">");
+        assert_eq!(
+            extract_thumb(&media, html, LINK),
+            Some("https://cdn.example.com/m.png".to_string())
+        );
+    }
+
+    #[test]
+    fn img_absolute_src() {
+        let html = Some("<p>hi</p><img src=\"https://cdn.example.com/a.jpg\">");
+        assert_eq!(
+            extract_thumb(&[], html, LINK),
+            Some("https://cdn.example.com/a.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn img_root_relative_src_resolves_against_origin() {
+        let html = Some("<img src=\"/img/a.png\">");
+        assert_eq!(
+            extract_thumb(&[], html, LINK),
+            Some("https://site.com/img/a.png".to_string())
+        );
+    }
+
+    #[test]
+    fn img_path_relative_src_resolves_against_full_link() {
+        // Diverges from the original (which used origin only): a path-relative
+        // src resolves against the full article path. `/blog/post` has no
+        // trailing slash, so RFC 3986 drops the last segment → /blog/.
+        let html = Some("<img src=\"images/a.png\">");
+        assert_eq!(
+            extract_thumb(&[], html, "https://site.com/blog/post/"),
+            Some("https://site.com/blog/post/images/a.png".to_string())
+        );
+    }
+
+    #[test]
+    fn no_img_returns_none() {
+        let html = Some("<p>no images here</p>");
+        assert_eq!(extract_thumb(&[], html, LINK), None);
+    }
+
+    #[test]
+    fn data_uri_src_rejected() {
+        let html = Some("<img src=\"data:image/png;base64,AAAA\">");
+        assert_eq!(extract_thumb(&[], html, LINK), None);
+    }
+
+    #[test]
+    fn javascript_uri_src_rejected() {
+        let html = Some("<img src=\"javascript:alert(1)\">");
+        assert_eq!(extract_thumb(&[], html, LINK), None);
+    }
+
+    #[test]
+    fn first_img_among_several() {
+        let html = Some(
+            "<img src=\"https://cdn.example.com/first.jpg\">\
+             <img src=\"https://cdn.example.com/second.jpg\">",
+        );
+        assert_eq!(
+            extract_thumb(&[], html, LINK),
+            Some("https://cdn.example.com/first.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn empty_src_skipped_for_next_valid() {
+        let html = Some(
+            "<img src=\"\">\
+             <img src=\"https://cdn.example.com/real.jpg\">",
+        );
+        assert_eq!(
+            extract_thumb(&[], html, LINK),
+            Some("https://cdn.example.com/real.jpg".to_string())
+        );
+    }
 }
