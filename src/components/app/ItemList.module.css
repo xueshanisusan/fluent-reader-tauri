@@ -4,16 +4,17 @@
     overflow-y: auto;
 }
 
-/* Cards grid — compact tiles, multi-column, fills the content width */
+/* Cards view — fixed-size tiles flow-wrapped like the original
+ * .cards-feed-container (flex-wrap + space-around), NOT a stretchy grid. */
 .containerCards {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-content: flex-start;
     padding: 12px;
-    align-content: start;
 }
 
 /* Magazine grid — wide rows, 1–2 columns */
@@ -92,51 +93,84 @@
     color: var(--text-muted);
 }
 
-/* ---- Cards (thumbnail + snippet) — bordered tile in the grid ---- */
-.rowCard {
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 13px;
-    border: 1px solid var(--border-soft);
+/* ---- Cards: faithful port of the original .default-card ----
+ * Fixed 256×264 tile. Read items are NOT faded (the original shows read
+ * state only via the absence of the orange unread dot in CardInfo). */
+.card {
+    position: relative;
+    color: var(--text-primary);
+    user-select: none;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.defaultCard {
+    display: inline-block;
+    width: 256px;
+    height: 264px;
     border-radius: 4px;
-    overflow: hidden;
+    background-color: var(--bg-panel);
+    box-shadow: rgba(0, 0, 0, 0.27) 0 5px 20px;
+    margin: 18px 12px;
+    transition: box-shadow linear 0.08s;
 }
 
-.rowCard .thumb {
+.defaultCard:hover {
+    box-shadow: rgba(0, 0, 0, 0.4) 0 5px 40px;
+}
+
+/* Blurred cover used as a frosted backdrop, with a translucent overlay. */
+.bgImg {
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 100%;
-    height: 120px;
+    height: 100%;
     object-fit: cover;
-    border-radius: 2px;
-    background: var(--bg-row-hover);
+    filter: var(--blur);
+}
+
+.bgOverlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--card-overlay);
+}
+
+.head {
     display: block;
+    object-fit: cover;
+    position: relative;
+    width: 100%;
+    height: 144px;
 }
 
-.rowCard .title {
+/* title/snippet must paint above the absolute bg layers (positioned + later
+ * in source order than the absolute backdrop). */
+.cardTitle {
+    font-size: 16px;
+    line-height: 22px;
     font-weight: 600;
+    margin: 10px 12px;
+    position: relative;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.rowCard.read .title {
-    font-weight: 400;
-}
-
-.rowCard .snippet {
-    font-size: 12px;
-    color: var(--text-muted);
+.cardSnippet {
+    font-size: 14px;
+    line-height: 20px;
+    margin: 10px 12px;
+    color: var(--text-secondary);
+    position: relative;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 7;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.rowCard .date {
-    font-size: 11px;
-    color: var(--text-muted);
 }
 
 /* ---- Magazine (wide row: image left, text right) ---- */

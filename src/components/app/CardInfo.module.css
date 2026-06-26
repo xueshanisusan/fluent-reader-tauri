@@ -1,0 +1,66 @@
+/* Faithful port of the original .info (dist/styles/cards.css). */
+.info {
+    display: flex;
+    align-items: center;
+    position: relative;
+    margin: 10px 12px;
+    line-height: 16px;
+}
+
+.icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+
+.name {
+    font-size: 12px;
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.creator {
+    color: var(--text-muted);
+}
+
+.creator::before {
+    content: "/";
+    margin: 0 5px;
+}
+
+.time {
+    font-size: 12px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.unread,
+.starred {
+    display: block;
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.unread::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 5px;
+    border-radius: 3px;
+    background-color: var(--unread);
+}
+
+.starred::after {
+    content: "★";
+    color: var(--unread);
+    font-size: 11px;
+    line-height: 16px;
+}
