@@ -5,7 +5,7 @@
     flex-shrink: 0;
     background: var(--bg-sidebar);
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--text-sidebar);
 }
 
 .row {
@@ -19,12 +19,22 @@
 }
 
 .row:hover {
-    background: var(--bg-row-hover);
+    background: var(--bg-sidebar-hover);
 }
 
 .row.active {
-    background: var(--bg-row-active);
-    border-left-color: var(--accent);
+    background: var(--bg-sidebar-active);
+    border-left-color: var(--accent-sidebar);
+}
+
+.rowIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: var(--text-sidebar-muted);
 }
 
 .label {
@@ -35,8 +45,8 @@
 }
 
 .badge {
-    background: var(--accent);
-    color: var(--accent-text);
+    background: var(--accent-sidebar);
+    color: #fff;
     font-size: 11px;
     padding: 1px 6px;
     border-radius: 8px;
@@ -51,7 +61,7 @@
 .sectionHeader {
     padding: 10px 12px 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-sidebar-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
@@ -66,7 +76,7 @@
 
 .subsHeaderLabel {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-sidebar-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
@@ -81,14 +91,14 @@
     padding: 0;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--text-sidebar-muted);
     cursor: pointer;
     border-radius: 3px;
 }
 
 .addBtn:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
+    background: var(--bg-sidebar-hover);
+    color: var(--text-sidebar);
 }
 
 .groupHeader {
@@ -99,17 +109,17 @@
     cursor: pointer;
     user-select: none;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-sidebar);
 }
 
 .groupHeader:hover {
-    background: var(--bg-row-hover);
+    background: var(--bg-sidebar-hover);
 }
 
 .groupCaret {
     display: inline-block;
     width: 10px;
-    color: var(--text-muted);
+    color: var(--text-sidebar-muted);
     transition: transform 0.15s ease;
     font-size: 10px;
 }
@@ -127,6 +137,6 @@
     padding: 2px 4px;
     font-size: 13px;
     border: 1px solid var(--border-strong);
-    background: var(--bg-input);
-    color: var(--text-primary);
+    background: var(--bg-input-dark);
+    color: var(--text-sidebar);
 }

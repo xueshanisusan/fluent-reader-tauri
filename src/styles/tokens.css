@@ -7,7 +7,7 @@
 :root {
     --bg-app: #fff;
     --bg-panel: #f7f7f7;
-    --bg-sidebar: #f7f7f7;
+    --bg-sidebar: #2b2b2b;
     --bg-header: #222;
     --bg-subscribe: #1a1a1a;
     --bg-input: #fff;
@@ -38,6 +38,14 @@
 
     --btn-bg: #444;
     --btn-text: #fff;
+
+    /* Sidebar is an always-dark panel in BOTH themes (matches the original
+     * Fluent Reader). Defined on :root only so they carry into dark mode. */
+    --text-sidebar: #e8e8e8;
+    --text-sidebar-muted: #9a9a9a;
+    --bg-sidebar-hover: rgba(255, 255, 255, 0.06);
+    --bg-sidebar-active: rgba(255, 255, 255, 0.14);
+    --accent-sidebar: #6c8cff;
 }
 
 [data-theme="dark"] {

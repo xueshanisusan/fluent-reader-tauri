@@ -648,6 +648,7 @@ export function App(): React.ReactElement {
                         onEditRules={setRulesModalSid}
                         onDeleteSource={onDeleteSource}
                         onAddFeed={() => setSubscribeOpen(true)}
+                        onOpenSearch={() => setSearchBarVisible(true)}
                     />
                 )}
                 {renderBody()}
