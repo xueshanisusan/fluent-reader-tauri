@@ -21,6 +21,7 @@ import { SearchBar } from "./app/SearchBar"
 import { SubscribeModal } from "./app/SubscribeModal"
 import { ItemListHeader } from "./app/ItemListHeader"
 import { ItemList } from "./app/ItemList"
+import { ArticleOverlay } from "./app/ArticleOverlay"
 import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
@@ -28,6 +29,7 @@ import { useArticleList } from "./app/useArticleList"
 import {
     settings,
     ViewType,
+    isGridView,
     type SettingsShape,
 } from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
@@ -88,7 +90,15 @@ export function App(): React.ReactElement {
         return () => clearTimeout(t)
     }, [searchInput])
 
-    const list = useArticleList({ sourceId: selectedSourceId, searchQuery })
+    const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
+        null
+    )
+
+    const list = useArticleList({
+        sourceId: selectedSourceId,
+        searchQuery,
+        autoSelectFirst: !isGridView(appSettings?.view ?? ViewType.Cards),
+    })
     const {
         items,
         listLoading,
@@ -122,9 +132,6 @@ export function App(): React.ReactElement {
     const [rulesModalSid, setRulesModalSid] = React.useState<number | null>(null)
     const [sidebarVisible, setSidebarVisible] = React.useState(true)
     const [searchBarVisible, setSearchBarVisible] = React.useState(false)
-    const [appSettings, setAppSettings] = React.useState<SettingsShape | null>(
-        null
-    )
     const [resolvedTheme, setResolvedTheme] = React.useState<Resolved>(() =>
         getResolvedTheme()
     )
@@ -348,12 +355,22 @@ export function App(): React.ReactElement {
 
     const onChangeViewMode = React.useCallback(
         (v: ViewType) => {
+            // Crossing the split↔grid boundary changes the reading surface
+            // (side pane vs full-screen overlay). Clear the selection so the
+            // user lands on the list/grid rather than an overlay popping open.
+            const prevView = appSettings?.view
+            if (
+                prevView !== undefined &&
+                isGridView(prevView) !== isGridView(v)
+            ) {
+                setSelectedItem(null)
+            }
             setAppSettings(prev => (prev ? { ...prev, view: v } : prev))
             settings
                 .set("view", v)
                 .catch(e => console.error("[App] persist view failed", e))
         },
-        []
+        [appSettings?.view, setSelectedItem]
     )
 
     const onToggleGroup = React.useCallback(
@@ -674,6 +691,56 @@ export function App(): React.ReactElement {
         if (items === null) {
             return <div className={layout.centered}>Loading…</div>
         }
+
+        const view = appSettings?.view ?? ViewType.Cards
+        const emptyHint = (
+            <div className={layout.emptyHint}>
+                {sources.length === 0
+                    ? "Click + in the sidebar to subscribe to a feed."
+                    : "Try Refresh feeds, change filter, or pick a different source."}
+            </div>
+        )
+
+        if (isGridView(view)) {
+            const overlayEscEnabled =
+                !settingsOpen &&
+                !subscribeOpen &&
+                rulesModalSid === null &&
+                !searchBarVisible
+            return (
+                <div className={layout.gridArea}>
+                    <ItemListHeader filter={filter} onChange={setFilter} />
+                    {items.length === 0 ? (
+                        <div className={layout.itemColumnEmpty}>
+                            <div>No items yet.</div>
+                            {emptyHint}
+                        </div>
+                    ) : (
+                        <ItemList
+                            items={items}
+                            selectedIid={selectedItem?.iid ?? null}
+                            viewMode={view}
+                            onSelect={setSelectedItem}
+                        />
+                    )}
+                    {selectedItem && (
+                        <ArticleOverlay
+                            item={selectedItem}
+                            hostStyle={hostStyle}
+                            articleId={`${selectedItem.iid}@${remount}`}
+                            escEnabled={overlayEscEnabled}
+                            onClose={() => setSelectedItem(null)}
+                            onToggleRead={onToggleRead}
+                            onToggleStar={onToggleStar}
+                            onLink={onLink}
+                            onKey={onArticleKey}
+                            onCtxMenu={onCtxMenu}
+                        />
+                    )}
+                </div>
+            )
+        }
+
         return (
             <>
                 <div className={layout.itemColumn}>
@@ -681,17 +748,13 @@ export function App(): React.ReactElement {
                     {items.length === 0 ? (
                         <div className={layout.itemColumnEmpty}>
                             <div>No items yet.</div>
-                            <div className={layout.emptyHint}>
-                                {sources.length === 0
-                                    ? "Click + in the sidebar to subscribe to a feed."
-                                    : "Try Refresh feeds, change filter, or pick a different source."}
-                            </div>
+                            {emptyHint}
                         </div>
                     ) : (
                         <ItemList
                             items={items}
                             selectedIid={selectedItem?.iid ?? null}
-                            viewMode={appSettings?.view ?? ViewType.Cards}
+                            viewMode={view}
                             onSelect={setSelectedItem}
                         />
                     )}

@@ -38,6 +38,16 @@
     color: var(--text-secondary);
 }
 
+.gridArea {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .articlePane {
     flex: 1;
     position: relative;
