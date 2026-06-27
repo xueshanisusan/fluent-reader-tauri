@@ -12,10 +12,12 @@ import styles from "./SettingsModal.module.css"
 export interface SettingsModalProps {
     open: boolean
     opmlBusy: boolean
+    backfillBusy: boolean
     onClose: () => void
     onChanged: (next: SettingsShape) => void
     onImportOpml: () => void
     onExportOpml: () => void
+    onBackfillThumbs: () => void
 }
 
 type Draft = Pick<
@@ -41,7 +43,16 @@ const APP_VERSION = pkg.version
 const REPO_URL = "https://github.com/yang991178/fluent-reader"
 
 export function SettingsModal(props: SettingsModalProps): React.ReactElement | null {
-    const { open, opmlBusy, onClose, onChanged, onImportOpml, onExportOpml } = props
+    const {
+        open,
+        opmlBusy,
+        backfillBusy,
+        onClose,
+        onChanged,
+        onImportOpml,
+        onExportOpml,
+        onBackfillThumbs,
+    } = props
     const [draft, setDraft] = React.useState<Draft | null>(null)
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
@@ -307,6 +318,26 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                     Import merges new feeds into your current
                                     list. Export saves all subscriptions to a
                                     file.
+                                </span>
+                            </div>
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Article images
+                                </label>
+                                <div className={styles.opmlRow}>
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        disabled={backfillBusy}
+                                        onClick={onBackfillThumbs}>
+                                        {backfillBusy
+                                            ? "Re-scanning…"
+                                            : "Re-scan images for existing articles"}
+                                    </button>
+                                </div>
+                                <span className={styles.hint}>
+                                    Finds cover images in already-downloaded
+                                    articles that were fetched before image
+                                    extraction was available.
                                 </span>
                             </div>
                         </div>

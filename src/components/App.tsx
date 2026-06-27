@@ -5,6 +5,7 @@ import { openExternal } from "../scripts/shell-bridge"
 import {
     groups as groupsApi,
     sources as sourcesApi,
+    items as itemsApi,
     type Group,
     type Source,
 } from "../scripts/db-bridge"
@@ -128,6 +129,7 @@ export function App(): React.ReactElement {
     const [subscribeOpen, setSubscribeOpen] = React.useState(false)
     const [remount, setRemount] = React.useState(0)
     const [opmlBusy, setOpmlBusy] = React.useState(false)
+    const [backfillBusy, setBackfillBusy] = React.useState(false)
     const [settingsOpen, setSettingsOpen] = React.useState(false)
     const [rulesModalSid, setRulesModalSid] = React.useState<number | null>(null)
     const [sidebarVisible, setSidebarVisible] = React.useState(true)
@@ -519,6 +521,31 @@ export function App(): React.ReactElement {
         }
     }, [logs])
 
+    const onBackfillThumbs = React.useCallback(async () => {
+        setBackfillBusy(true)
+        setRefreshStatus("re-scanning images…")
+        try {
+            const summary = await itemsApi.backfillThumbs()
+            if (cancelledRef.current) return
+            setRefreshStatus(
+                `Images: ${summary.updated} added · ${summary.scanned} scanned`
+            )
+            await loadItems()
+        } catch (err) {
+            if (cancelledRef.current) return
+            const er = err as { kind?: string; message?: string } | Error
+            const kind = (er as { kind?: string }).kind
+            const message = (er as { message?: string }).message ?? String(err)
+            setRefreshStatus(
+                kind
+                    ? `Image re-scan failed (${kind}): ${message}`
+                    : `Image re-scan failed: ${message}`
+            )
+        } finally {
+            if (!cancelledRef.current) setBackfillBusy(false)
+        }
+    }, [loadItems])
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
@@ -637,10 +664,12 @@ export function App(): React.ReactElement {
             <SettingsModal
                 open={settingsOpen}
                 opmlBusy={opmlBusy}
+                backfillBusy={backfillBusy}
                 onClose={() => setSettingsOpen(false)}
                 onChanged={setAppSettings}
                 onImportOpml={onImportOpml}
                 onExportOpml={onExportOpml}
+                onBackfillThumbs={onBackfillThumbs}
             />
             <RulesModal
                 sourceId={rulesModalSid}

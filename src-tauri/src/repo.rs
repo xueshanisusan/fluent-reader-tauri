@@ -501,6 +501,38 @@ pub mod items {
         .await
     }
 
+    /// Items missing a thumbnail that still have content to scan. Used by the
+    /// one-shot thumb backfill. `content`/`link` are NOT NULL in the schema, so
+    /// the tuple has no Option fields. Column order MUST stay (iid, content,
+    /// link) to match the tuple decode and the caller's destructure.
+    pub async fn list_thumbless(pool: &SqlitePool) -> sqlx::Result<Vec<(i64, String, String)>> {
+        sqlx::query_as::<_, (i64, String, String)>(
+            "SELECT iid, content, link FROM items \
+             WHERE (thumb IS NULL OR thumb = '') AND content <> ''",
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Apply computed thumbs to existing rows in one tx. `thumb` is unindexed,
+    /// so a plain UPDATE touches no unique constraint. Mirrors the loop-in-tx
+    /// shape of `insert_dedup_in_tx`.
+    pub async fn update_thumbs_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        updates: &[(i64, String)],
+    ) -> sqlx::Result<u64> {
+        let mut updated = 0u64;
+        for (iid, thumb) in updates {
+            let res = sqlx::query("UPDATE items SET thumb = ? WHERE iid = ?")
+                .bind(thumb)
+                .bind(iid)
+                .execute(&mut *tx)
+                .await?;
+            updated += res.rows_affected();
+        }
+        Ok(updated)
+    }
+
     pub async fn insert_dedup_in_tx(
         tx: &mut sqlx::SqliteConnection,
         items: &[NewItem],

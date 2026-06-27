@@ -4,6 +4,7 @@
 
 use crate::commands::AppState;
 use crate::models::*;
+use serde::Serialize;
 use crate::net::{self, FetchRequest};
 use crate::repo;
 use base64::Engine;
@@ -274,6 +275,60 @@ pub async fn sources_ingest(
     sid: i64,
 ) -> Result<IngestionOutcome, IngestionError> {
     ingest(&app, &state.pool, sid).await
+}
+
+#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BackfillError {
+    #[error("db: {message}")]
+    Db { message: String },
+}
+
+/// One-shot backfill: re-derive `thumb` for existing items that don't have one.
+/// Existing rows never stored the original `entry.media`, so only the
+/// content-`<img>` cascade step is reachable — we call `extract_thumb` with an
+/// empty media slice, which falls straight to that step plus the http(s) gate.
+/// Already-thumbed rows are excluded by the query (re-scanning them could only
+/// downgrade a richer media:thumbnail to a content image).
+///
+/// Three phases to respect `scraper::Html`'s `!Send`: async read, SYNC compute
+/// (no `.await` while an `Html` is alive), async write in one tx.
+pub async fn backfill_thumbs_core(
+    pool: &sqlx::SqlitePool,
+) -> Result<BackfillSummary, BackfillError> {
+    let rows = repo::items::list_thumbless(pool)
+        .await
+        .map_err(|e| BackfillError::Db { message: e.to_string() })?;
+    let scanned = rows.len() as u64;
+
+    // Synchronous: extract_thumb builds and drops a scraper::Html internally.
+    // Do NOT introduce an .await inside this loop.
+    let mut updates: Vec<(i64, String)> = Vec::new();
+    for (iid, content, link) in &rows {
+        if let Some(thumb) = extract_thumb(&[], Some(content), link) {
+            updates.push((*iid, thumb));
+        }
+    }
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| BackfillError::Db { message: e.to_string() })?;
+    let updated = repo::items::update_thumbs_in_tx(&mut tx, &updates)
+        .await
+        .map_err(|e| BackfillError::Db { message: e.to_string() })?;
+    tx.commit()
+        .await
+        .map_err(|e| BackfillError::Db { message: e.to_string() })?;
+
+    Ok(BackfillSummary { scanned, updated })
+}
+
+#[tauri::command]
+pub async fn items_backfill_thumbs(
+    state: State<'_, AppState>,
+) -> Result<BackfillSummary, BackfillError> {
+    backfill_thumbs_core(&state.pool).await
 }
 
 // Feed auto-discovery: given an arbitrary URL, return the feed URLs we can ingest.
