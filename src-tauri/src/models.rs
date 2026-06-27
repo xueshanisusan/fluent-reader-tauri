@@ -165,6 +165,13 @@ pub enum SearchError {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BackfillSummary {
+    pub scanned: u64,
+    pub updated: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiscoveredFeed {
     pub url: String,
     pub title: Option<String>,

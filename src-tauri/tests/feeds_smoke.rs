@@ -262,3 +262,68 @@ async fn ingest_dedup_on_identical_200_body() {
         .expect("list items");
     assert_eq!(items.len(), 2, "still just 2 items total");
 }
+
+#[tokio::test]
+async fn backfill_fills_missing_thumbs_from_content() {
+    use fluent_reader_lib::models::NewItem;
+
+    let pool = db::open_memory().await.expect("open db");
+    let sid = make_source(&pool, "http://example.com/feed".to_string()).await;
+
+    let items = vec![
+        // <img> in content, no thumb → should be filled.
+        NewItem {
+            source_id: sid,
+            title: "with image".into(),
+            link: "https://site.com/post-1".into(),
+            date_ms: 1,
+            content: Some("<p>hi</p><img src=\"https://cdn.example.com/a.jpg\">".into()),
+            ..Default::default()
+        },
+        // No image in content → stays NULL.
+        NewItem {
+            source_id: sid,
+            title: "no image".into(),
+            link: "https://site.com/post-2".into(),
+            date_ms: 2,
+            content: Some("<p>just text</p>".into()),
+            ..Default::default()
+        },
+        // Already thumbed → excluded from scan entirely, value untouched.
+        NewItem {
+            source_id: sid,
+            title: "already thumbed".into(),
+            link: "https://site.com/post-3".into(),
+            date_ms: 3,
+            thumb: Some("https://existing/x.jpg".into()),
+            content: Some("<img src=\"https://cdn.example.com/b.jpg\">".into()),
+            ..Default::default()
+        },
+    ];
+    repo::items::insert_many(&pool, items).await.expect("insert");
+
+    let summary = feeds::backfill_thumbs_core(&pool).await.expect("backfill");
+    assert_eq!(summary.scanned, 2, "two thumbless rows scanned (thumbed row excluded)");
+    assert_eq!(summary.updated, 1, "one row gained a thumb");
+
+    let all = repo::items::list(&pool, Some(sid), None, None, 10, 0)
+        .await
+        .expect("list");
+    let by_title = |t: &str| all.iter().find(|i| i.title == t).expect("item present");
+    assert_eq!(
+        by_title("with image").thumb.as_deref(),
+        Some("https://cdn.example.com/a.jpg")
+    );
+    assert_eq!(by_title("no image").thumb, None);
+    assert_eq!(
+        by_title("already thumbed").thumb.as_deref(),
+        Some("https://existing/x.jpg"),
+        "pre-existing thumb is not overwritten"
+    );
+
+    // Idempotent: second run finds only the still-thumbless no-image row and
+    // changes nothing.
+    let again = feeds::backfill_thumbs_core(&pool).await.expect("backfill 2");
+    assert_eq!(again.scanned, 1, "only the no-image row remains thumbless");
+    assert_eq!(again.updated, 0, "nothing new to update");
+}

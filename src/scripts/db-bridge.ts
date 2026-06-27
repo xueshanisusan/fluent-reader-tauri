@@ -123,6 +123,13 @@ export interface ItemSearchFilter {
 
 export type SearchError = { kind: "db"; message: string };
 
+export interface BackfillSummary {
+  scanned: number;
+  updated: number;
+}
+
+export type BackfillError = { kind: "db"; message: string };
+
 export const groups = {
   list: () => invoke<Group[]>("groups_list"),
   create: (name: string) => invoke<Group>("groups_create", { name }),
@@ -186,4 +193,5 @@ export const items = {
   setStarred: (iid: number, starred: boolean) =>
     invoke<void>("items_set_starred", { iid, starred }),
   unreadCounts: () => invoke<UnreadCount[]>("items_unread_counts"),
+  backfillThumbs: () => invoke<BackfillSummary>("items_backfill_thumbs"),
 };

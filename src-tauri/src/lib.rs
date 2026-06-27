@@ -55,6 +55,7 @@ pub fn run() {
             net::net_fetch,
             feeds::sources_ingest,
             feeds::feeds_discover,
+            feeds::items_backfill_thumbs,
             opml::feeds_import_opml,
             opml::feeds_export_opml,
         ])
