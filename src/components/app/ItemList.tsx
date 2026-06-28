@@ -2,6 +2,7 @@ import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
 import { ViewType, isGridView } from "../../scripts/settings-bridge"
 import { CardInfo } from "./CardInfo"
+import { formatRelative } from "../../scripts/format"
 import styles from "./ItemList.module.css"
 
 export interface SourceMeta {
@@ -36,6 +37,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 key={it.iid}
                                 item={it}
                                 selected={selected}
+                                source={sources?.get(it.sourceId)}
                                 onSelect={onSelect}
                             />
                         )
@@ -84,24 +86,12 @@ interface RowProps {
     onSelect: (it: Item) => void
 }
 
-function rowClass(base: string, item: Item, selected: boolean): string {
-    return [
-        styles.row,
-        base,
-        item.hasRead ? styles.read : "",
-        selected ? styles.selected : "",
-    ]
-        .filter(Boolean)
-        .join(" ")
-}
-
 // Faithful port of the original .list-card: an 80×80 thumb (when present) on
 // the left + a data column (shared CardInfo meta line, title clamped to 3
-// lines, snippet clamped to 2 lines). Renders in the 280px item column, so the
-// data column is tighter than the original's full-width list — clamping keeps
-// it tidy. Read cards fade title→--text-secondary, snippet→--text-muted.
-// Selected shows a 2px left accent plus a subtle row tint. The original
-// list-card uses plain <CardInfo> (no creator); the star lives in CardInfo.
+// lines, snippet clamped to 2 lines), spanning the full-width feed. Read cards
+// fade title→--text-secondary, snippet→--text-muted. Selected shows a 2px left
+// accent plus a subtle row tint. The original list-card uses plain <CardInfo>
+// (no creator); the star lives in CardInfo.
 function ListRow(props: RowProps): React.ReactElement {
     const { item, selected, source, onSelect } = props
     const [imgOk, setImgOk] = React.useState(true)
@@ -144,19 +134,37 @@ function ListRow(props: RowProps): React.ReactElement {
     )
 }
 
+// Faithful port of the original .compact-card: a 31px single-line row —
+// CardInfo (fixed width, no time) on the left, an ellipsis-truncated run of
+// bold title + muted snippet in the middle, and a trailing relative time on the
+// right. No thumb, and (faithful to the original) no read fade — read state
+// shows only via CardInfo's absent unread dot. The star lives in CardInfo.
 function CompactRow(props: RowProps): React.ReactElement {
-    const { item, selected, onSelect } = props
+    const { item, selected, source, onSelect } = props
+    const cls = [styles.compactCard, selected ? styles.selected : ""]
+        .filter(Boolean)
+        .join(" ")
     return (
-        <div
-            className={rowClass(styles.rowCompact, item, selected)}
-            onClick={() => onSelect(item)}>
-            <div className={styles.title}>
-                {item.title}
-                {item.starred && <span className={styles.star}>★</span>}
+        <div className={cls} onClick={() => onSelect(item)}>
+            <CardInfo
+                className={styles.compactInfo}
+                name={source?.name}
+                iconUrl={source?.iconUrl}
+                creator={item.creator}
+                starred={item.starred}
+                hasRead={item.hasRead}
+                dateMs={item.dateMs}
+                hideTime
+            />
+            <div className={styles.compactData}>
+                <span className={styles.compactTitle}>{item.title}</span>
+                {item.snippet && (
+                    <span className={styles.compactSnippet}>{item.snippet}</span>
+                )}
             </div>
-            <div className={styles.date}>
-                {new Date(item.dateMs).toLocaleDateString()}
-            </div>
+            <span className={styles.compactTime}>
+                {formatRelative(item.dateMs)}
+            </span>
         </div>
     )
 }

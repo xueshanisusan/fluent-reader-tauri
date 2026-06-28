@@ -7,9 +7,9 @@ export type Filter = "all" | "unread" | "starred"
 export interface UseArticleListOptions {
     sourceId: number | null
     searchQuery: string
-    // Split views (List/Compact) auto-open the first article in the side pane.
-    // Grid views (Cards/Magazine) must NOT — the user lands on the grid and the
-    // article overlay only opens on click. Defaults to true.
+    // When true, the first article is auto-selected once a list loads. The app
+    // passes false (all views open the article overlay only on click), but the
+    // option is kept for flexibility. Defaults to true.
     autoSelectFirst?: boolean
 }
 
@@ -79,9 +79,8 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
                   })
             if (cancelledRef.current) return
             setItems(list)
-            // Preserve a still-valid selection across reloads; otherwise the
-            // auto-select-first effect below decides whether to pick list[0]
-            // (split views) or leave it null (grid views).
+            // Preserve a still-valid selection across reloads; otherwise clear
+            // it (the article overlay opens only on an explicit click).
             setSelectedItem(prev =>
                 prev && list.some(i => i.iid === prev.iid) ? prev : null
             )
@@ -103,10 +102,8 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         }
     }, [loadItems])
 
-    // Split views auto-open the first article once a list is present and nothing
-    // valid is selected. Grid views opt out (autoSelectFirst=false) so the
-    // overlay only opens on an explicit click. Keyed on items + the flag so it
-    // also fires when settings resolve and flip the layout family on cold start.
+    // Optional auto-select of the first article (off in this app — the overlay
+    // opens only on an explicit click). Keyed on items + the flag.
     React.useEffect(() => {
         if (!autoSelectFirst) return
         if (!items || items.length === 0) return
