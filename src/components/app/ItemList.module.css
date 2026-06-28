@@ -17,16 +17,16 @@
     padding: 12px;
 }
 
-/* Magazine grid — wide rows, 1–2 columns */
+/* Magazine — fixed 700px cards stacked in a centered column, like the
+ * original .magazine-feed (.ms-List-page: flex column, align-items center). */
 .containerMagazine {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
-    gap: 16px;
-    padding: 16px;
-    align-content: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 28px;
 }
 
 /* shared row state — applies across all modes */
@@ -173,59 +173,95 @@
     overflow: hidden;
 }
 
-/* ---- Magazine (wide row: image left, text right) ---- */
-.rowMagazine {
+/* ---- Magazine: faithful port of the original .magazine-card ----
+ * Fixed 700px card, 200×160 cover left + data column right. Content-box (NO
+ * box-sizing override) so the 160px max-height applies to the content area and
+ * the 160px image fills it exactly — matching the original (card renders
+ * ~748×208 with its 24px padding). Read cards fade to --text-secondary (stays
+ * legible in dark mode, unlike --text-muted). No hover slide / no animation. */
+.magazineCard {
+    width: 700px;
+    padding: 24px;
+    max-height: 160px;
     display: flex;
-    gap: 14px;
-    padding: 14px;
-    font-size: 14px;
-    border: 1px solid var(--border-soft);
-    border-radius: 4px;
-    overflow: hidden;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border-default);
+    box-shadow: rgba(0, 0, 0, 0) 0 5px 20px;
+    transition: box-shadow linear 0.08s, background-color linear 0.08s,
+        transform linear 0.08s;
 }
 
-.rowMagazine .magThumb {
-    width: 160px;
-    height: 110px;
+.magazineCard:hover {
+    box-shadow: rgba(0, 0, 0, 0.27) 0 5px 20px;
+    background-color: var(--bg-panel);
+}
+
+.magazineCard:active {
+    box-shadow: rgba(0, 0, 0, 0) 0 5px 20px;
+    transform: scale(0.97);
+    background-color: unset;
+}
+
+.magazineCard.read {
+    color: var(--text-secondary);
+}
+
+.magazineCard.selected {
+    background-color: var(--bg-row-active);
+}
+
+.magHead {
+    width: 200px;
+    height: 160px;
+    margin-right: 25px;
     flex-shrink: 0;
+}
+
+.magHead img {
+    width: 200px;
+    height: 160px;
     object-fit: cover;
-    border-radius: 3px;
-    background: var(--bg-row-hover);
     display: block;
 }
 
-.rowMagazine .magBody {
-    flex: 1;
-    min-width: 0;
+.magData {
     display: flex;
+    flex-grow: 1;
+    min-width: 0;
     flex-direction: column;
-    gap: 6px;
+    justify-content: space-between;
 }
 
-.rowMagazine .title {
+.magData > .magText {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+/* Override CardInfo's default .info margin (10px 12px) for the magazine
+ * footer; the shared CardInfo module is left untouched (passed via className). */
+.magInfo {
+    margin: 0;
+}
+
+.magTitle,
+.magSnippet {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    margin: 0 0 12px;
+}
+
+.magTitle {
+    font-size: 18px;
+    line-height: 27px;
     font-weight: 600;
-    font-size: 16px;
-    display: -webkit-box;
     -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
 }
 
-.rowMagazine.read .title {
-    font-weight: 400;
-}
-
-.rowMagazine .magSnippet {
-    font-size: 13px;
-    color: var(--text-muted);
-    display: -webkit-box;
+.magSnippet {
+    font-size: 14px;
+    line-height: 21px;
     -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.rowMagazine .date {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: auto;
 }

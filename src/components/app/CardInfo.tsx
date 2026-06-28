@@ -11,6 +11,10 @@ export interface CardInfoProps {
     dateMs: number
     showCreator?: boolean
     hideTime?: boolean
+    // Optional extra class on the root <p>, so a consumer (e.g. the magazine
+    // card) can override the default .info margin without editing this shared
+    // module. Cards pass nothing, so their rendering is unchanged.
+    className?: string
 }
 
 // Mirrors the original Fluent Reader's CardInfo (src/components/cards/info.tsx):
@@ -25,11 +29,12 @@ export function CardInfo(props: CardInfoProps): React.ReactElement {
         dateMs,
         showCreator,
         hideTime,
+        className,
     } = props
     const [iconOk, setIconOk] = React.useState(true)
 
     return (
-        <p className={styles.info}>
+        <p className={[styles.info, className].filter(Boolean).join(" ")}>
             {iconUrl && iconOk && (
                 <img
                     className={styles.icon}

@@ -54,6 +54,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 key={it.iid}
                                 item={it}
                                 selected={selected}
+                                source={sources?.get(it.sourceId)}
                                 onSelect={onSelect}
                             />
                         )
@@ -174,34 +175,51 @@ function CardsRow(props: RowProps): React.ReactElement {
     )
 }
 
+// Faithful port of the original .magazine-card: a fixed 700px-wide card,
+// 200×160 cover on the left, data column on the right (title + snippet + the
+// shared CardInfo meta line with creator). Read cards fade their text; no hover
+// slide (the original magazine-card has none). The star lives in CardInfo, like
+// the original — there is no separate title star.
 function MagazineRow(props: RowProps): React.ReactElement {
-    const { item, selected, onSelect } = props
+    const { item, selected, source, onSelect } = props
     const [imgOk, setImgOk] = React.useState(true)
     const showThumb = !!item.thumb && imgOk
+    const cls = [
+        styles.magazineCard,
+        item.hasRead ? styles.read : "",
+        selected ? styles.selected : "",
+    ]
+        .filter(Boolean)
+        .join(" ")
     return (
-        <div
-            className={rowClass(styles.rowMagazine, item, selected)}
-            onClick={() => onSelect(item)}>
+        <div className={cls} onClick={() => onSelect(item)}>
             {showThumb && (
-                <img
-                    className={styles.magThumb}
-                    src={item.thumb!}
-                    alt=""
-                    loading="lazy"
-                    onError={() => setImgOk(false)}
-                />
+                <div className={styles.magHead}>
+                    <img
+                        src={item.thumb!}
+                        alt=""
+                        loading="lazy"
+                        onError={() => setImgOk(false)}
+                    />
+                </div>
             )}
-            <div className={styles.magBody}>
-                <div className={styles.title}>
-                    {item.title}
-                    {item.starred && <span className={styles.star}>★</span>}
+            <div className={styles.magData}>
+                <div className={styles.magText}>
+                    <h3 className={styles.magTitle}>{item.title}</h3>
+                    {item.snippet && (
+                        <p className={styles.magSnippet}>{item.snippet}</p>
+                    )}
                 </div>
-                {item.snippet && (
-                    <div className={styles.magSnippet}>{item.snippet}</div>
-                )}
-                <div className={styles.date}>
-                    {new Date(item.dateMs).toLocaleString()}
-                </div>
+                <CardInfo
+                    className={styles.magInfo}
+                    name={source?.name}
+                    iconUrl={source?.iconUrl}
+                    creator={item.creator}
+                    starred={item.starred}
+                    hasRead={item.hasRead}
+                    dateMs={item.dateMs}
+                    showCreator
+                />
             </div>
         </div>
     )

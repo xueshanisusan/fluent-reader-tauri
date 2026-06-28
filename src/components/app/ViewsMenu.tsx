@@ -16,6 +16,7 @@ interface ViewOption {
 const OPTIONS: ViewOption[] = [
     { value: ViewType.Cards, label: "Cards" },
     { value: ViewType.List, label: "List" },
+    { value: ViewType.Magazine, label: "Magazine" },
     { value: ViewType.Compact, label: "Compact" },
 ]
 
