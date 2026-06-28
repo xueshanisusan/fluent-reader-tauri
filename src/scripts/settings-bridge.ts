@@ -14,9 +14,9 @@ export const enum ViewType {
   Customized = 4,
 }
 
-// Cards and Magazine render a full-width grid with the article opening as an
-// overlay; List/Compact (and Customized, for now) use the narrow-list + side
-// reading-pane split. Mirrors the original Fluent Reader's two layouts.
+// True for the flow-wrapped tile/grid feeds (Cards, Magazine), false for the
+// vertical-list feeds (List, Compact). All views open the article in an
+// overlay; this only selects the ItemList container layout, not the app layout.
 export function isGridView(v: ViewType): boolean {
   return v === ViewType.Cards || v === ViewType.Magazine;
 }

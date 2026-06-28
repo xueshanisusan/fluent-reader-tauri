@@ -1,5 +1,4 @@
 import * as React from "react"
-import { ArticleView } from "./article/ArticleView"
 import type { HostStyle } from "./article/iframe-bootstrap"
 import { openExternal } from "../scripts/shell-bridge"
 import {
@@ -17,7 +16,6 @@ import {
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
 import { NavBar } from "./app/NavBar"
-import { ArticleToolbar } from "./app/ArticleToolbar"
 import { SearchBar } from "./app/SearchBar"
 import { SubscribeModal } from "./app/SubscribeModal"
 import { ItemListHeader } from "./app/ItemListHeader"
@@ -30,7 +28,6 @@ import { useArticleList } from "./app/useArticleList"
 import {
     settings,
     ViewType,
-    isGridView,
     type SettingsShape,
 } from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
@@ -98,7 +95,9 @@ export function App(): React.ReactElement {
     const list = useArticleList({
         sourceId: selectedSourceId,
         searchQuery,
-        autoSelectFirst: !isGridView(appSettings?.view ?? ViewType.Cards),
+        // All views use the full-width feed + article overlay, so nothing is
+        // auto-opened — the overlay appears only when the user clicks an item.
+        autoSelectFirst: false,
     })
     const {
         items,
@@ -368,22 +367,12 @@ export function App(): React.ReactElement {
 
     const onChangeViewMode = React.useCallback(
         (v: ViewType) => {
-            // Crossing the split↔grid boundary changes the reading surface
-            // (side pane vs full-screen overlay). Clear the selection so the
-            // user lands on the list/grid rather than an overlay popping open.
-            const prevView = appSettings?.view
-            if (
-                prevView !== undefined &&
-                isGridView(prevView) !== isGridView(v)
-            ) {
-                setSelectedItem(null)
-            }
             setAppSettings(prev => (prev ? { ...prev, view: v } : prev))
             settings
                 .set("view", v)
                 .catch(e => console.error("[App] persist view failed", e))
         },
-        [appSettings?.view, setSelectedItem]
+        []
     )
 
     const onToggleGroup = React.useCallback(
@@ -741,89 +730,45 @@ export function App(): React.ReactElement {
             </div>
         )
 
-        if (isGridView(view)) {
-            const overlayEscEnabled =
-                !settingsOpen &&
-                !subscribeOpen &&
-                rulesModalSid === null &&
-                !searchBarVisible
-            return (
-                <div className={layout.gridArea}>
-                    <ItemListHeader filter={filter} onChange={setFilter} />
-                    {items.length === 0 ? (
-                        <div className={layout.itemColumnEmpty}>
-                            <div>No items yet.</div>
-                            {emptyHint}
-                        </div>
-                    ) : (
-                        <ItemList
-                            items={items}
-                            selectedIid={selectedItem?.iid ?? null}
-                            viewMode={view}
-                            sources={sourceMeta}
-                            onSelect={setSelectedItem}
-                        />
-                    )}
-                    {selectedItem && (
-                        <ArticleOverlay
-                            item={selectedItem}
-                            hostStyle={hostStyle}
-                            articleId={`${selectedItem.iid}@${remount}`}
-                            escEnabled={overlayEscEnabled}
-                            onClose={() => setSelectedItem(null)}
-                            onToggleRead={onToggleRead}
-                            onToggleStar={onToggleStar}
-                            onLink={onLink}
-                            onKey={onArticleKey}
-                            onCtxMenu={onCtxMenu}
-                        />
-                    )}
-                </div>
-            )
-        }
-
+        // All views render as a full-width feed with the article opening in an
+        // overlay (matching the original Fluent Reader — no side reading pane).
+        const overlayEscEnabled =
+            !settingsOpen &&
+            !subscribeOpen &&
+            rulesModalSid === null &&
+            !searchBarVisible
         return (
-            <>
-                <div className={layout.itemColumn}>
-                    <ItemListHeader filter={filter} onChange={setFilter} />
-                    {items.length === 0 ? (
-                        <div className={layout.itemColumnEmpty}>
-                            <div>No items yet.</div>
-                            {emptyHint}
-                        </div>
-                    ) : (
-                        <ItemList
-                            items={items}
-                            selectedIid={selectedItem?.iid ?? null}
-                            viewMode={view}
-                            sources={sourceMeta}
-                            onSelect={setSelectedItem}
-                        />
-                    )}
-                </div>
-                <div className={layout.articlePane}>
-                    {selectedItem && (
-                        <>
-                            <ArticleToolbar
-                                item={selectedItem}
-                                onToggleRead={onToggleRead}
-                                onToggleStar={onToggleStar}
-                            />
-                            <div className={layout.articleViewport}>
-                                <ArticleView
-                                    key={`${selectedItem.iid}@${remount}`}
-                                    html={selectedItem.content}
-                                    articleId={`${selectedItem.iid}@${remount}`}
-                                    hostStyle={hostStyle}
-                                    onLink={onLink}
-                                    onKey={onArticleKey}
-                                    onCtxMenu={onCtxMenu}
-                                />
-                            </div>
-                        </>
-                    )}
-                </div>
-            </>
+            <div className={layout.gridArea}>
+                <ItemListHeader filter={filter} onChange={setFilter} />
+                {items.length === 0 ? (
+                    <div className={layout.itemColumnEmpty}>
+                        <div>No items yet.</div>
+                        {emptyHint}
+                    </div>
+                ) : (
+                    <ItemList
+                        items={items}
+                        selectedIid={selectedItem?.iid ?? null}
+                        viewMode={view}
+                        sources={sourceMeta}
+                        onSelect={setSelectedItem}
+                    />
+                )}
+                {selectedItem && (
+                    <ArticleOverlay
+                        item={selectedItem}
+                        hostStyle={hostStyle}
+                        articleId={`${selectedItem.iid}@${remount}`}
+                        escEnabled={overlayEscEnabled}
+                        onClose={() => setSelectedItem(null)}
+                        onToggleRead={onToggleRead}
+                        onToggleStar={onToggleStar}
+                        onLink={onLink}
+                        onKey={onArticleKey}
+                        onCtxMenu={onCtxMenu}
+                    />
+                )}
+            </div>
         )
     }
 }

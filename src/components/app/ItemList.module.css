@@ -29,28 +29,6 @@
     padding-top: 28px;
 }
 
-/* shared row state — applies across all modes */
-.row {
-    cursor: pointer;
-    background: transparent;
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--border-soft);
-}
-
-.row.read {
-    color: var(--text-muted);
-}
-
-.row.selected {
-    background: var(--bg-row-active);
-}
-
-.star {
-    margin-left: 6px;
-    color: var(--star);
-    font-size: 12px;
-}
-
 /* ---- List: faithful port of the original .list-card ----
  * 80×80 thumb left + flexible data column (CardInfo + clamped title/snippet).
  * Standalone card (does NOT use the shared .row helper). position:relative so
@@ -149,25 +127,78 @@
     -webkit-box-orient: vertical;
 }
 
-/* ---- Compact (dense single-line) ---- */
-.rowCompact {
-    padding: 4px 12px;
+/* ---- Compact: faithful port of the original .compact-card ----
+ * 31px single-line row. Left: CardInfo fixed width (favicon + name +
+ * star/unread, NO time). Middle: .compactData — flex-grow, single line, bold
+ * title + muted snippet, ellipsis-truncated as one run. Right: 12px relative
+ * time. Standalone card (does NOT use the shared .row helper). Faithful to the
+ * original, there is NO read fade (read state shows only via CardInfo's absent
+ * unread dot). Selected adds a subtle tint marking the currently-open item. */
+.compactCard {
+    height: 31px;
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: 12px;
+    align-items: center;
+    border-bottom: 1px solid var(--border-default);
+    font-size: 14px;
+    line-height: 31px;
+    padding: 0 9px;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    transition: box-shadow linear 0.08s, background-color linear 0.08s;
 }
 
-.rowCompact .title {
-    flex: 1;
+.compactCard:hover {
+    box-shadow: rgba(0, 0, 0, 0.27) 0 0 10px;
+    background-color: var(--bg-panel);
+}
+
+.compactCard:active {
+    box-shadow: rgba(0, 0, 0, 0) 0 0 10px;
+}
+
+.compactCard.selected {
+    background-color: var(--bg-row-active);
+}
+
+.compactCard > * {
+    margin: 0 3px;
+    flex-shrink: 0;
+}
+
+/* Override CardInfo's .info (display:flex; margin:10px 12px; line-height:16px).
+ * Descendant selector (0,2,0) beats CardInfo's .info (0,1,0) regardless of
+ * bundle order. align-items:center (inherited from .info) centers the 16px
+ * children in the 31px row. Width 140px, matching the original full-width
+ * compact-card. */
+.compactCard .compactInfo {
+    width: 140px;
+    line-height: 31px;
+}
+
+/* The only flexible child: grows, shrinks, and truncates as one run. Scoped
+ * `> .compactData` (0,2,0) so it beats `.compactCard > *`'s flex-shrink:0 on
+ * specificity rather than source order. */
+.compactCard > .compactData {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.rowCompact .date {
-    flex-shrink: 0;
-    font-size: 11px;
+.compactTitle {
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.compactSnippet {
+    color: var(--text-muted);
+}
+
+.compactTime {
+    font-size: 12px;
     color: var(--text-muted);
 }
 
