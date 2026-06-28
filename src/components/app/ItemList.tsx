@@ -45,6 +45,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 key={it.iid}
                                 item={it}
                                 selected={selected}
+                                source={sources?.get(it.sourceId)}
                                 onSelect={onSelect}
                             />
                         )
@@ -94,18 +95,50 @@ function rowClass(base: string, item: Item, selected: boolean): string {
         .join(" ")
 }
 
+// Faithful port of the original .list-card: an 80×80 thumb (when present) on
+// the left + a data column (shared CardInfo meta line, title clamped to 3
+// lines, snippet clamped to 2 lines). Renders in the 280px item column, so the
+// data column is tighter than the original's full-width list — clamping keeps
+// it tidy. Read cards fade title→--text-secondary, snippet→--text-muted.
+// Selected shows a 2px left accent plus a subtle row tint. The original
+// list-card uses plain <CardInfo> (no creator); the star lives in CardInfo.
 function ListRow(props: RowProps): React.ReactElement {
-    const { item, selected, onSelect } = props
+    const { item, selected, source, onSelect } = props
+    const [imgOk, setImgOk] = React.useState(true)
+    const showThumb = !!item.thumb && imgOk
+    const cls = [
+        styles.listCard,
+        item.hasRead ? styles.read : "",
+        selected ? styles.selected : "",
+    ]
+        .filter(Boolean)
+        .join(" ")
     return (
-        <div
-            className={rowClass(styles.rowList, item, selected)}
-            onClick={() => onSelect(item)}>
-            <div className={styles.title}>
-                {item.title}
-                {item.starred && <span className={styles.star}>★</span>}
-            </div>
-            <div className={styles.date}>
-                {new Date(item.dateMs).toLocaleString()}
+        <div className={cls} onClick={() => onSelect(item)}>
+            {showThumb && (
+                <div className={styles.listHead}>
+                    <img
+                        src={item.thumb!}
+                        alt=""
+                        loading="lazy"
+                        onError={() => setImgOk(false)}
+                    />
+                </div>
+            )}
+            <div className={styles.listData}>
+                <CardInfo
+                    className={styles.listInfo}
+                    name={source?.name}
+                    iconUrl={source?.iconUrl}
+                    creator={item.creator}
+                    starred={item.starred}
+                    hasRead={item.hasRead}
+                    dateMs={item.dateMs}
+                />
+                <h3 className={styles.listTitle}>{item.title}</h3>
+                {item.snippet && (
+                    <p className={styles.listSnippet}>{item.snippet}</p>
+                )}
             </div>
         </div>
     )

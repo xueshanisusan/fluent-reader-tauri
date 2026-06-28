@@ -51,24 +51,102 @@
     font-size: 12px;
 }
 
-/* ---- List (current behavior) ---- */
-.rowList {
-    padding: 10px 12px;
-    font-size: 13px;
+/* ---- List: faithful port of the original .list-card ----
+ * 80×80 thumb left + flexible data column (CardInfo + clamped title/snippet).
+ * Standalone card (does NOT use the shared .row helper). position:relative so
+ * the .selected::before left-accent anchors to it. Read cards fade title to
+ * --text-secondary and snippet to --text-muted (both legible in dark, unlike a
+ * single muted token). Selected = 2px left accent + a subtle row tint. */
+.listCard {
+    position: relative;
+    display: flex;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border-default);
+    box-shadow: rgba(0, 0, 0, 0) 0 5px 15px;
+    transition: box-shadow linear 0.08s;
 }
 
-.rowList .title {
-    font-weight: 600;
+.listCard:hover {
+    box-shadow: rgba(0, 0, 0, 0.27) 0 5px 15px;
 }
 
-.rowList.read .title {
-    font-weight: 400;
+.listCard:active {
+    box-shadow: rgba(0, 0, 0, 0) 0 5px 15px,
+        inset rgba(0, 0, 0, 0.27) 0 0 15px;
 }
 
-.rowList .date {
-    font-size: 11px;
+.listCard.read {
+    color: var(--text-secondary);
+}
+
+.listCard.read .listSnippet {
     color: var(--text-muted);
-    margin-top: 2px;
+}
+
+.listCard.selected {
+    background-color: var(--bg-row-active);
+}
+
+.listCard.selected::before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-left: 2px solid var(--text-link);
+}
+
+.listHead {
+    width: 80px;
+    height: 80px;
+    margin: 8px 0 8px 10px;
+    flex-shrink: 0;
+}
+
+.listHead img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    display: block;
+}
+
+.listData {
+    flex-grow: 1;
+    margin: 8px 10px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Override CardInfo's default .info margin (10px 12px). Original list-card
+ * .info is `margin:0 0 8px; height:16px`; drop the hard height to avoid
+ * clipping (per the Magazine review) and keep margin only. */
+.listInfo {
+    margin: 0 0 8px;
+}
+
+.listTitle {
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 600;
+    margin: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.listSnippet {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+    margin: 4px 0 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* ---- Compact (dense single-line) ---- */
