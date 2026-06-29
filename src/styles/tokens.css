@@ -41,6 +41,10 @@
     --blur: blur(20px);
     --card-overlay: rgba(255, 255, 255, 0.73);
 
+    /* Search-term highlight (<mark>). */
+    --highlight-bg: #ffe58a;
+    --highlight-fg: #222;
+
     --btn-bg: #444;
     --btn-text: #fff;
 
@@ -88,6 +92,9 @@
     --unread: #ffaa44;
     --blur: blur(20px);
     --card-overlay: rgba(40, 40, 40, 0.66);
+
+    --highlight-bg: #6b5800;
+    --highlight-fg: #ffe;
 
     --btn-bg: #333;
     --btn-text: #e8e8e8;

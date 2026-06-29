@@ -779,6 +779,7 @@ export function App(): React.ReactElement {
                             appSettings?.listViewConfigs ??
                             ViewConfigs.ShowCover
                         }
+                        searchQuery={searchQuery}
                         onSelect={setSelectedItem}
                     />
                 )}
