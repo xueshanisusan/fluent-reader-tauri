@@ -7,6 +7,7 @@ import {
     items as itemsApi,
     type Group,
     type Source,
+    type Item,
 } from "../scripts/db-bridge"
 import {
     refreshAll,
@@ -20,6 +21,7 @@ import { SearchBar } from "./app/SearchBar"
 import { SubscribeModal } from "./app/SubscribeModal"
 import { ItemListHeader } from "./app/ItemListHeader"
 import { ItemList } from "./app/ItemList"
+import { ItemContextMenu } from "./app/ItemContextMenu"
 import { ArticleOverlay } from "./app/ArticleOverlay"
 import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
@@ -113,10 +115,19 @@ export function App(): React.ReactElement {
         reloadUnreadCounts,
         onToggleRead,
         onToggleStar,
+        onToggleReadItem,
+        onToggleStarItem,
         onMarkAllRead,
         onSelectNeighbor,
         onOpenSelectedLink,
     } = list
+
+    // Right-click context menu for a feed item (null = closed).
+    const [itemMenu, setItemMenu] = React.useState<{
+        item: Item
+        x: number
+        y: number
+    } | null>(null)
 
     const [refreshInFlight, setRefreshInFlight] = React.useState(false)
     const [refreshStatus, setRefreshStatus] = React.useState<string | null>(null)
@@ -564,6 +575,15 @@ export function App(): React.ReactElement {
         })
     }, [])
 
+    // Clipboard write can reject in the webview (focus / secure-context), so
+    // never let it throw unhandled. No clipboard plugin is installed; the
+    // webview's navigator.clipboard is sufficient for these short strings.
+    const copyText = React.useCallback((text: string) => {
+        navigator.clipboard?.writeText(text).catch(err => {
+            console.error("[App] clipboard write failed", err)
+        })
+    }, [])
+
     const handleShortcut = React.useCallback(
         (key: string): boolean => {
             switch (key) {
@@ -780,6 +800,9 @@ export function App(): React.ReactElement {
                             ViewConfigs.ShowCover
                         }
                         searchQuery={searchQuery}
+                        onContextMenu={(item, x, y) =>
+                            setItemMenu({ item, x, y })
+                        }
                         onSelect={setSelectedItem}
                     />
                 )}
@@ -795,6 +818,34 @@ export function App(): React.ReactElement {
                         onLink={onLink}
                         onKey={onArticleKey}
                         onCtxMenu={onCtxMenu}
+                    />
+                )}
+                {itemMenu && (
+                    <ItemContextMenu
+                        x={itemMenu.x}
+                        y={itemMenu.y}
+                        item={itemMenu.item}
+                        onToggleRead={() => {
+                            void onToggleReadItem(itemMenu.item)
+                            setItemMenu(null)
+                        }}
+                        onToggleStar={() => {
+                            void onToggleStarItem(itemMenu.item)
+                            setItemMenu(null)
+                        }}
+                        onOpenInBrowser={() => {
+                            onLink(itemMenu.item.link)
+                            setItemMenu(null)
+                        }}
+                        onCopyLink={() => {
+                            copyText(itemMenu.item.link)
+                            setItemMenu(null)
+                        }}
+                        onCopyTitle={() => {
+                            copyText(itemMenu.item.title)
+                            setItemMenu(null)
+                        }}
+                        onDismiss={() => setItemMenu(null)}
                     />
                 )}
             </div>

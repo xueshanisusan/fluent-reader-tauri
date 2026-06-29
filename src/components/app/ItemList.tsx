@@ -24,6 +24,8 @@ export interface ItemListProps {
     // each card's title/snippet are highlighted via <Highlights>, mirroring the
     // backend's whole-query LIKE search. Empty/absent → plain text.
     searchQuery?: string
+    // Opens the right-click menu for a row at the cursor. Absent → no menu.
+    onContextMenu?: (item: Item, x: number, y: number) => void
     onSelect: (it: Item) => void
 }
 
@@ -41,6 +43,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
         sources,
         listViewConfigs,
         searchQuery,
+        onContextMenu,
         onSelect,
     } = props
     const configs = listViewConfigs ?? ViewConfigs.ShowCover
@@ -58,6 +61,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
                                 query={query}
+                                onContextMenu={onContextMenu}
                                 onSelect={onSelect}
                             />
                         )
@@ -70,6 +74,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 source={sources?.get(it.sourceId)}
                                 configs={configs}
                                 query={query}
+                                onContextMenu={onContextMenu}
                                 onSelect={onSelect}
                             />
                         )
@@ -81,6 +86,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
                                 query={query}
+                                onContextMenu={onContextMenu}
                                 onSelect={onSelect}
                             />
                         )
@@ -94,6 +100,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
                                 query={query}
+                                onContextMenu={onContextMenu}
                                 onSelect={onSelect}
                             />
                         )
@@ -111,7 +118,21 @@ interface RowProps {
     configs?: ViewConfigs
     // Active search query; matches in title/snippet are highlighted. "" = none.
     query?: string
+    onContextMenu?: (item: Item, x: number, y: number) => void
     onSelect: (it: Item) => void
+}
+
+// Shared right-click handler: suppress the native menu and forward the row's
+// item + cursor position to the app-level context menu.
+function rowContextMenu(
+    item: Item,
+    handler: ((item: Item, x: number, y: number) => void) | undefined
+): (e: React.MouseEvent) => void {
+    return e => {
+        if (!handler) return
+        e.preventDefault()
+        handler(item, e.clientX, e.clientY)
+    }
 }
 
 // Faithful port of the original .list-card: an 80×80 thumb (when present) on
@@ -137,7 +158,10 @@ function ListRow(props: RowProps): React.ReactElement {
         .filter(Boolean)
         .join(" ")
     return (
-        <div className={cls} onClick={() => onSelect(item)}>
+        <div
+            className={cls}
+            onClick={() => onSelect(item)}
+            onContextMenu={rowContextMenu(item, props.onContextMenu)}>
             {showThumb && (
                 <div className={styles.listHead}>
                     <img
@@ -183,7 +207,10 @@ function CompactRow(props: RowProps): React.ReactElement {
         .filter(Boolean)
         .join(" ")
     return (
-        <div className={cls} onClick={() => onSelect(item)}>
+        <div
+            className={cls}
+            onClick={() => onSelect(item)}
+            onContextMenu={rowContextMenu(item, props.onContextMenu)}>
             <CardInfo
                 className={styles.compactInfo}
                 name={source?.name}
@@ -224,7 +251,8 @@ function CardsRow(props: RowProps): React.ReactElement {
     return (
         <div
             className={`${styles.card} ${styles.defaultCard}`}
-            onClick={() => onSelect(item)}>
+            onClick={() => onSelect(item)}
+            onContextMenu={rowContextMenu(item, props.onContextMenu)}>
             {showThumb && (
                 <img
                     className={styles.bgImg}
@@ -281,7 +309,10 @@ function MagazineRow(props: RowProps): React.ReactElement {
         .filter(Boolean)
         .join(" ")
     return (
-        <div className={cls} onClick={() => onSelect(item)}>
+        <div
+            className={cls}
+            onClick={() => onSelect(item)}
+            onContextMenu={rowContextMenu(item, props.onContextMenu)}>
             {showThumb && (
                 <div className={styles.magHead}>
                     <img
