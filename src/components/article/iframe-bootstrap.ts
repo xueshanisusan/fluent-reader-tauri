@@ -63,7 +63,21 @@ export const HOST_BASE_CSS = `
   }
   a { color: var(--fr-link, #06c); }
   img { max-width: 100%; height: auto; }
-  blockquote { border-left: 3px solid var(--fr-link, #06c); padding-left: 12px; color: #666; margin-left: 0; }
+  p { margin: 0 0 1em; }
+  h1, h2, h3, h4, h5, h6 { line-height: 1.3; font-weight: 600; margin: 1.4em 0 0.5em; }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.3em; }
+  h3 { font-size: 1.15em; }
+  h4, h5, h6 { font-size: 1em; }
+  ul, ol { padding-left: 1.5em; margin: 0 0 1em; }
+  li { margin: 0.25em 0; }
+  figure { margin: 1em 0; text-align: center; }
+  figure img { margin: 0 auto; }
+  figcaption { font-size: 0.85em; color: var(--fr-muted, #888); margin-top: 6px; }
+  hr { border: none; border-top: 1px solid var(--fr-border, #ddd); margin: 1.5em 0; }
+  table { border-collapse: collapse; max-width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid var(--fr-border, #ddd); padding: 6px 10px; text-align: left; }
+  blockquote { border-left: 3px solid var(--fr-link, #06c); padding-left: 12px; color: #666; margin: 0 0 1em; }
   pre { background: #f4f4f4; padding: 12px; overflow-x: auto; }
   code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; }
   .fr-article-header { border-bottom: 1px solid var(--fr-border, #eee); padding-bottom: 16px; margin-bottom: 20px; }
