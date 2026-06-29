@@ -117,6 +117,7 @@ export function App(): React.ReactElement {
         onToggleStar,
         onToggleReadItem,
         onToggleStarItem,
+        onSetHiddenItem,
         onMarkAllRead,
         onSelectNeighbor,
         onOpenSelectedLink,
@@ -831,6 +832,13 @@ export function App(): React.ReactElement {
                         }}
                         onToggleStar={() => {
                             void onToggleStarItem(itemMenu.item)
+                            setItemMenu(null)
+                        }}
+                        onToggleHidden={() => {
+                            void onSetHiddenItem(
+                                itemMenu.item,
+                                !itemMenu.item.hidden
+                            )
                             setItemMenu(null)
                         }}
                         onOpenInBrowser={() => {

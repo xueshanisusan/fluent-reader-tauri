@@ -156,7 +156,7 @@ async fn repo_crud_roundtrip() {
     let inserted = repo::items::insert_many(&pool, new_items).await.unwrap();
     assert_eq!(inserted, 5);
 
-    let all = repo::items::list(&pool, Some(src_loose.sid), None, None, 100, 0).await.unwrap();
+    let all = repo::items::list(&pool, Some(src_loose.sid), None, None, false, 100, 0).await.unwrap();
     assert_eq!(all.len(), 5);
     assert_eq!(all[0].title, "Item 4", "DESC ordering by date_ms");
     assert_eq!(all[4].title, "Item 0");
@@ -168,12 +168,12 @@ async fn repo_crud_roundtrip() {
     repo::items::mark_read(&pool, all[1].iid, true).await.unwrap();
     repo::items::set_starred(&pool, all[2].iid, true).await.unwrap();
 
-    let unread = repo::items::list(&pool, Some(src_loose.sid), Some(false), None, 100, 0)
+    let unread = repo::items::list(&pool, Some(src_loose.sid), Some(false), None, false, 100, 0)
         .await
         .unwrap();
     assert_eq!(unread.len(), 3);
 
-    let starred = repo::items::list(&pool, None, None, Some(true), 100, 0).await.unwrap();
+    let starred = repo::items::list(&pool, None, None, Some(true), false, 100, 0).await.unwrap();
     assert_eq!(starred.len(), 1);
     assert_eq!(starred[0].title, "Item 2");
 
@@ -183,7 +183,7 @@ async fn repo_crud_roundtrip() {
     assert_eq!(counts[0].count, 3);
 
     // pagination
-    let page = repo::items::list(&pool, Some(src_loose.sid), None, None, 2, 1).await.unwrap();
+    let page = repo::items::list(&pool, Some(src_loose.sid), None, None, false, 2, 1).await.unwrap();
     assert_eq!(page.len(), 2);
     assert_eq!(page[0].title, "Item 3");
     assert_eq!(page[1].title, "Item 2");
@@ -280,7 +280,7 @@ async fn insert_dedup_skips_on_guid_match_even_when_link_changes() {
     assert_eq!(inserted2, 0, "guid match must skip even though link is new");
     assert_eq!(skipped2, 2, "second item also skipped via link index");
 
-    let all = repo::items::list(&pool, Some(src.sid), None, None, 100, 0).await.unwrap();
+    let all = repo::items::list(&pool, Some(src.sid), None, None, false, 100, 0).await.unwrap();
     assert_eq!(all.len(), 2, "no duplicate rows");
 }
 
@@ -333,12 +333,12 @@ async fn items_search_matches_title_or_snippet() {
     .await
     .unwrap();
 
-    let hits = repo::items::search(&pool, "rust", None, None, None, 50, 0).await.unwrap();
+    let hits = repo::items::search(&pool, "rust", None, None, None, false, 50, 0).await.unwrap();
     assert_eq!(hits.len(), 2, "title or snippet match");
     assert_eq!(hits[0].title, "Go 1.23 update", "newer date first (snippet match)");
     assert_eq!(hits[1].title, "Rust 1.85 release notes");
 
-    let none = repo::items::search(&pool, "kotlin", None, None, None, 50, 0).await.unwrap();
+    let none = repo::items::search(&pool, "kotlin", None, None, None, false, 50, 0).await.unwrap();
     assert!(none.is_empty());
 }
 
@@ -357,11 +357,11 @@ async fn items_search_escapes_like_metachars() {
     .await
     .unwrap();
 
-    let pct = repo::items::search(&pool, "50%", None, None, None, 50, 0).await.unwrap();
+    let pct = repo::items::search(&pool, "50%", None, None, None, false, 50, 0).await.unwrap();
     assert_eq!(pct.len(), 1, "literal % must not act as wildcard");
     assert_eq!(pct[0].title, "Saved 50% on hosting");
 
-    let under = repo::items::search(&pool, "_", None, None, None, 50, 0).await.unwrap();
+    let under = repo::items::search(&pool, "_", None, None, None, false, 50, 0).await.unwrap();
     assert!(under.is_empty(), "literal _ must not act as wildcard");
 }
 
@@ -382,7 +382,7 @@ async fn items_search_composes_with_filters() {
     .await
     .unwrap();
 
-    let all = repo::items::list(&pool, Some(sid_a), None, None, 100, 0).await.unwrap();
+    let all = repo::items::list(&pool, Some(sid_a), None, None, false, 100, 0).await.unwrap();
     let read_iid = all
         .iter()
         .find(|i| i.title == "rust in source A read")
@@ -390,12 +390,51 @@ async fn items_search_composes_with_filters() {
         .iid;
     repo::items::mark_read(&pool, read_iid, true).await.unwrap();
 
-    let scoped = repo::items::search(&pool, "rust", Some(sid_a), None, None, 50, 0).await.unwrap();
+    let scoped = repo::items::search(&pool, "rust", Some(sid_a), None, None, false, 50, 0).await.unwrap();
     assert_eq!(scoped.len(), 2, "source filter applies");
 
-    let scoped_unread = repo::items::search(&pool, "rust", Some(sid_a), Some(false), None, 50, 0)
+    let scoped_unread = repo::items::search(&pool, "rust", Some(sid_a), Some(false), None, false, 50, 0)
         .await
         .unwrap();
     assert_eq!(scoped_unread.len(), 1);
     assert_eq!(scoped_unread[0].title, "rust in source A unread");
+}
+
+#[tokio::test]
+async fn set_hidden_toggles_item_between_normal_and_hidden_views() {
+    let pool = db::open_memory().await.expect("open in-memory db");
+    let sid = make_src(&pool, "https://h.example/feed", "H").await;
+    repo::items::insert_many(
+        &pool,
+        vec![
+            mk_item(sid, "keep visible", "x", 100),
+            mk_item(sid, "to hide", "x", 200),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let normal = repo::items::list(&pool, Some(sid), None, None, false, 100, 0).await.unwrap();
+    assert_eq!(normal.len(), 2);
+    let hide_iid = normal.iter().find(|i| i.title == "to hide").unwrap().iid;
+
+    // Hidden bin is empty until we hide something.
+    let hidden_before = repo::items::list(&pool, Some(sid), None, None, true, 100, 0).await.unwrap();
+    assert!(hidden_before.is_empty());
+
+    repo::items::set_hidden(&pool, hide_iid, true).await.unwrap();
+
+    let normal_after = repo::items::list(&pool, Some(sid), None, None, false, 100, 0).await.unwrap();
+    assert_eq!(normal_after.len(), 1, "hidden item drops out of normal view");
+    assert_eq!(normal_after[0].title, "keep visible");
+
+    let hidden_after = repo::items::list(&pool, Some(sid), None, None, true, 100, 0).await.unwrap();
+    assert_eq!(hidden_after.len(), 1, "hidden item shows in the Hidden bin");
+    assert_eq!(hidden_after[0].title, "to hide");
+
+    // Unhiding restores it to the normal view.
+    repo::items::set_hidden(&pool, hide_iid, false).await.unwrap();
+    let restored = repo::items::list(&pool, Some(sid), None, None, false, 100, 0).await.unwrap();
+    assert_eq!(restored.len(), 2);
+    assert!(repo::items::list(&pool, Some(sid), None, None, true, 100, 0).await.unwrap().is_empty());
 }

@@ -11,6 +11,7 @@ const OPTIONS: Array<{ value: Filter; label: string }> = [
     { value: "all", label: "All" },
     { value: "unread", label: "Unread" },
     { value: "starred", label: "Starred" },
+    { value: "hidden", label: "Hidden" },
 ]
 
 export function ItemListHeader(props: ItemListHeaderProps): React.ReactElement {

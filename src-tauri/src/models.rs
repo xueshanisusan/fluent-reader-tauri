@@ -164,6 +164,12 @@ pub enum SearchError {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum HideError {
+    Db { message: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackfillSummary {
     pub scanned: u64,
