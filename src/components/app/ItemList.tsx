@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
-import { ViewType, isGridView } from "../../scripts/settings-bridge"
+import { ViewType, ViewConfigs, isGridView } from "../../scripts/settings-bridge"
 import { CardInfo } from "./CardInfo"
 import { formatRelative } from "../../scripts/format"
 import styles from "./ItemList.module.css"
@@ -15,6 +15,10 @@ export interface ItemListProps {
     selectedIid: number | null
     viewMode: ViewType
     sources?: ReadonlyMap<number, SourceMeta>
+    // Display toggles for the List view (cover/snippet/fade). Only ListRow
+    // reads them — faithful to the original, which applies ViewConfigs to List
+    // only. Defaults to ShowCover.
+    listViewConfigs?: ViewConfigs
     onSelect: (it: Item) => void
 }
 
@@ -25,7 +29,9 @@ function containerClass(viewMode: ViewType): string {
 }
 
 export function ItemList(props: ItemListProps): React.ReactElement {
-    const { items, selectedIid, viewMode, sources, onSelect } = props
+    const { items, selectedIid, viewMode, sources, listViewConfigs, onSelect } =
+        props
+    const configs = listViewConfigs ?? ViewConfigs.ShowCover
     return (
         <div className={containerClass(viewMode)}>
             {items.map(it => {
@@ -48,6 +54,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 item={it}
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
+                                configs={configs}
                                 onSelect={onSelect}
                             />
                         )
@@ -83,6 +90,8 @@ interface RowProps {
     item: Item
     selected: boolean
     source?: SourceMeta
+    // List view only; ignored by the other rows. Defaults to ShowCover.
+    configs?: ViewConfigs
     onSelect: (it: Item) => void
 }
 
@@ -94,11 +103,15 @@ interface RowProps {
 // (no creator); the star lives in CardInfo.
 function ListRow(props: RowProps): React.ReactElement {
     const { item, selected, source, onSelect } = props
+    const configs = props.configs ?? ViewConfigs.ShowCover
     const [imgOk, setImgOk] = React.useState(true)
-    const showThumb = !!item.thumb && imgOk
+    const showThumb =
+        !!item.thumb && imgOk && !!(configs & ViewConfigs.ShowCover)
+    const showSnippet = !!(configs & ViewConfigs.ShowSnippet) && !!item.snippet
+    const fadeRead = !!(configs & ViewConfigs.FadeRead) && item.hasRead
     const cls = [
         styles.listCard,
-        item.hasRead ? styles.read : "",
+        fadeRead ? styles.read : "",
         selected ? styles.selected : "",
     ]
         .filter(Boolean)
@@ -126,7 +139,7 @@ function ListRow(props: RowProps): React.ReactElement {
                     dateMs={item.dateMs}
                 />
                 <h3 className={styles.listTitle}>{item.title}</h3>
-                {item.snippet && (
+                {showSnippet && (
                     <p className={styles.listSnippet}>{item.snippet}</p>
                 )}
             </div>

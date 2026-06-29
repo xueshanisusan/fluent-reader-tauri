@@ -1,10 +1,12 @@
 import * as React from "react"
-import { ViewType } from "../../scripts/settings-bridge"
+import { ViewType, ViewConfigs } from "../../scripts/settings-bridge"
 import styles from "./ViewsMenu.module.css"
 
 export interface ViewsMenuProps {
     current: ViewType
+    listViewConfigs: ViewConfigs
     onSelect: (v: ViewType) => void
+    onToggleConfig: (bit: ViewConfigs) => void
     onClose: () => void
 }
 
@@ -20,8 +22,16 @@ const OPTIONS: ViewOption[] = [
     { value: ViewType.Compact, label: "Compact" },
 ]
 
+// Display toggles for the List view only (matching the original Fluent Reader,
+// which applies ViewConfigs to List). Shown when the current view is List.
+const TOGGLES: Array<{ bit: ViewConfigs; label: string }> = [
+    { bit: ViewConfigs.ShowCover, label: "Show cover" },
+    { bit: ViewConfigs.ShowSnippet, label: "Show snippet" },
+    { bit: ViewConfigs.FadeRead, label: "Fade read" },
+]
+
 export function ViewsMenu(props: ViewsMenuProps): React.ReactElement {
-    const { current, onSelect, onClose } = props
+    const { current, listViewConfigs, onSelect, onToggleConfig, onClose } = props
     const ref = React.useRef<HTMLDivElement | null>(null)
 
     React.useEffect(() => {
@@ -67,6 +77,29 @@ export function ViewsMenu(props: ViewsMenuProps): React.ReactElement {
                     </button>
                 )
             })}
+            {current === ViewType.List && (
+                <>
+                    <div className={styles.divider} role="separator" />
+                    {TOGGLES.map(t => {
+                        const on = !!(listViewConfigs & t.bit)
+                        return (
+                            <button
+                                key={t.bit}
+                                role="menuitemcheckbox"
+                                aria-checked={on}
+                                className={styles.item}
+                                onClick={() => onToggleConfig(t.bit)}>
+                                <span
+                                    className={`${styles.check} ${on ? "" : styles.checkHidden}`}
+                                    aria-hidden="true">
+                                    <CheckIcon />
+                                </span>
+                                <span className={styles.label}>{t.label}</span>
+                            </button>
+                        )
+                    })}
+                </>
+            )}
         </div>
     )
 }
