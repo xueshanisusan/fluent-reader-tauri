@@ -1,12 +1,21 @@
 import * as React from "react"
 import { sanitize } from "../../scripts/article-sanitize"
-import { buildSrcdoc, type IframeMessage, type HostStyle } from "./iframe-bootstrap"
+import {
+    buildSrcdoc,
+    type IframeMessage,
+    type HostStyle,
+    type ArticleMeta,
+} from "./iframe-bootstrap"
 import styles from "./ArticleView.module.css"
 
 export interface ArticleViewProps {
     html: string
     articleId?: string | number
     hostStyle?: HostStyle
+    // In-article header (title/source/author/date). Tracked by articleId in the
+    // srcdoc memo: meta is a pure function of the item, and articleId changes
+    // whenever the item does, so it doesn't need its own dep.
+    meta?: ArticleMeta
     onLink?: (url: string) => void
     onKey?: (key: string, mods: { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean }) => void
     onCtxMenu?: (data: { x: number; y: number; text: string | null; href: string | null }) => void
@@ -19,17 +28,19 @@ function isIframeMessage(d: unknown): d is IframeMessage {
 }
 
 export function ArticleView(props: ArticleViewProps): React.ReactElement {
-    const { html, articleId = "default", hostStyle, onLink, onKey, onCtxMenu } = props
+    const { html, articleId = "default", hostStyle, meta, onLink, onKey, onCtxMenu } = props
     const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
 
     const srcdoc = React.useMemo<string | null>(() => {
         try {
-            return buildSrcdoc(sanitize(html), hostStyle)
+            return buildSrcdoc(sanitize(html), hostStyle, meta)
         } catch (e) {
             console.error("[ArticleView] sanitize failed", e)
             return null
         }
-    }, [html, hostStyle?.fontSize, hostStyle?.fontFamily, hostStyle?.theme])
+        // meta is keyed by articleId (see prop doc), so it isn't a separate dep.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [html, articleId, hostStyle?.fontSize, hostStyle?.fontFamily, hostStyle?.theme])
 
     React.useEffect(() => {
         function onMessage(e: MessageEvent): void {

@@ -1,14 +1,17 @@
 import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
-import type { HostStyle } from "../article/iframe-bootstrap"
+import type { HostStyle, ArticleMeta } from "../article/iframe-bootstrap"
 import { ArticleView } from "../article/ArticleView"
 import { ArticleToolbar } from "./ArticleToolbar"
+import { formatArticleDate } from "../../scripts/format"
 import styles from "./ArticleOverlay.module.css"
 
 export interface ArticleOverlayProps {
     item: Item
     hostStyle: HostStyle
     articleId: string
+    // Source display name for the in-article header meta line.
+    sourceName?: string
     // When false (a modal/search overlay is open above this), the overlay must
     // NOT handle Esc — otherwise one keystroke closes both the modal and the
     // article. The modal owns Esc in that case.
@@ -31,6 +34,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
         item,
         hostStyle,
         articleId,
+        sourceName,
         escEnabled,
         onClose,
         onToggleRead,
@@ -39,6 +43,14 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
         onKey,
         onCtxMenu,
     } = props
+
+    const meta: ArticleMeta = {
+        title: item.title,
+        link: item.link,
+        dateText: formatArticleDate(item.dateMs),
+        sourceName: sourceName ?? "",
+        creator: item.creator,
+    }
 
     React.useEffect(() => {
         if (!escEnabled) return
@@ -66,6 +78,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
                     html={item.content}
                     articleId={articleId}
                     hostStyle={hostStyle}
+                    meta={meta}
                     onLink={onLink}
                     onKey={onKey}
                     onCtxMenu={onCtxMenu}
