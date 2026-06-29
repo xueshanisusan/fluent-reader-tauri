@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { LogEntry } from "../../scripts/log-store"
-import { ViewType } from "../../scripts/settings-bridge"
+import { ViewType, ViewConfigs } from "../../scripts/settings-bridge"
 import {
     closeWindow,
     isWindowMaximized,
@@ -18,6 +18,7 @@ export interface NavBarProps {
     hasUnread: boolean
     logEntries: ReadonlyArray<LogEntry>
     viewMode: ViewType
+    listViewConfigs: ViewConfigs
     onToggleSidebar: () => void
     onToggleSearch: () => void
     onMarkAllRead: () => void
@@ -26,6 +27,7 @@ export interface NavBarProps {
     onJumpToSource: (sid: number) => void
     onClearLogs: () => void
     onChangeViewMode: (v: ViewType) => void
+    onToggleViewConfig: (bit: ViewConfigs) => void
 }
 
 export function NavBar(props: NavBarProps): React.ReactElement {
@@ -35,6 +37,7 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         hasUnread,
         logEntries,
         viewMode,
+        listViewConfigs,
         onToggleSidebar,
         onToggleSearch,
         onMarkAllRead,
@@ -43,6 +46,7 @@ export function NavBar(props: NavBarProps): React.ReactElement {
         onJumpToSource,
         onClearLogs,
         onChangeViewMode,
+        onToggleViewConfig,
     } = props
 
     const [maximized, setMaximized] = React.useState(false)
@@ -173,7 +177,9 @@ export function NavBar(props: NavBarProps): React.ReactElement {
             {viewsOpen && (
                 <ViewsMenu
                     current={viewMode}
+                    listViewConfigs={listViewConfigs}
                     onSelect={onChangeViewMode}
+                    onToggleConfig={onToggleViewConfig}
                     onClose={() => setViewsOpen(false)}
                 />
             )}

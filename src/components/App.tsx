@@ -28,6 +28,7 @@ import { useArticleList } from "./app/useArticleList"
 import {
     settings,
     ViewType,
+    ViewConfigs,
     type SettingsShape,
 } from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
@@ -375,6 +376,25 @@ export function App(): React.ReactElement {
         []
     )
 
+    // Toggle a List-view display flag (cover/snippet/fade). XOR the bit, update
+    // state for a live re-render, and persist. Mirrors onChangeViewMode's
+    // set-state-then-persist shape (persist outside the updater).
+    const onToggleViewConfig = React.useCallback(
+        (bit: ViewConfigs) => {
+            const cur = appSettings?.listViewConfigs ?? ViewConfigs.ShowCover
+            const next = cur ^ bit
+            setAppSettings(prev =>
+                prev ? { ...prev, listViewConfigs: next } : prev
+            )
+            settings
+                .set("listViewConfigs", next)
+                .catch(e =>
+                    console.error("[App] persist listViewConfigs failed", e)
+                )
+        },
+        [appSettings?.listViewConfigs]
+    )
+
     const onToggleGroup = React.useCallback(
         async (gid: number, expanded: boolean) => {
             setExpandedGroups(prev => {
@@ -631,7 +651,11 @@ export function App(): React.ReactElement {
                 onJumpToSource={setSelectedSourceId}
                 onClearLogs={logs.clear}
                 viewMode={appSettings?.view ?? ViewType.Cards}
+                listViewConfigs={
+                    appSettings?.listViewConfigs ?? ViewConfigs.ShowCover
+                }
                 onChangeViewMode={onChangeViewMode}
+                onToggleViewConfig={onToggleViewConfig}
             />
             {searchBarVisible && (
                 <SearchBar
@@ -751,6 +775,10 @@ export function App(): React.ReactElement {
                         selectedIid={selectedItem?.iid ?? null}
                         viewMode={view}
                         sources={sourceMeta}
+                        listViewConfigs={
+                            appSettings?.listViewConfigs ??
+                            ViewConfigs.ShowCover
+                        }
                         onSelect={setSelectedItem}
                     />
                 )}

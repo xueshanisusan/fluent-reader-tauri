@@ -21,7 +21,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-primary);
+    /* No explicit color — inherit the card's color so the name fades together
+     * with the rest when a read card is dimmed (matches the original, whose
+     * .info span.name has no color). Card bases set --text-primary, so unread
+     * names are unaffected. */
 }
 
 .creator {
