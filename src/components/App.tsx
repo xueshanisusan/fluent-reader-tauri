@@ -813,10 +813,18 @@ export function App(): React.ReactElement {
                         hostStyle={hostStyle}
                         articleId={`${selectedItem.iid}@${remount}`}
                         sourceName={sourceMeta.get(selectedItem.sourceId)?.name}
+                        iconUrl={sourceMeta.get(selectedItem.sourceId)?.iconUrl}
                         escEnabled={overlayEscEnabled}
                         onClose={() => setSelectedItem(null)}
                         onToggleRead={onToggleRead}
                         onToggleStar={onToggleStar}
+                        onToggleHidden={() =>
+                            void onSetHiddenItem(
+                                selectedItem,
+                                !selectedItem.hidden
+                            )
+                        }
+                        onOpenInBrowser={() => onLink(selectedItem.link)}
                         onLink={onLink}
                         onKey={onArticleKey}
                         onCtxMenu={onCtxMenu}

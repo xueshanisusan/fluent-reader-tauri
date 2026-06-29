@@ -4,15 +4,33 @@ import styles from "./ArticleToolbar.module.css"
 
 export interface ArticleToolbarProps {
     item: Item
+    sourceName?: string
+    iconUrl?: string | null
     onToggleRead: () => void
     onToggleStar: () => void
+    onToggleHidden: () => void
+    onOpenInBrowser: () => void
     onClose?: () => void
 }
 
+// Header for the article overlay, matching the original Fluent Reader: source
+// (favicon + name) on the left, action buttons on the right. The article title
+// itself lives in the body header (see iframe-bootstrap buildHeader), not here.
 export function ArticleToolbar(
     props: ArticleToolbarProps
 ): React.ReactElement {
-    const { item, onToggleRead, onToggleStar, onClose } = props
+    const {
+        item,
+        sourceName,
+        iconUrl,
+        onToggleRead,
+        onToggleStar,
+        onToggleHidden,
+        onOpenInBrowser,
+        onClose,
+    } = props
+    const [iconOk, setIconOk] = React.useState(true)
+
     return (
         <div className={styles.bar}>
             {onClose && (
@@ -24,7 +42,17 @@ export function ArticleToolbar(
                     <BackIcon />
                 </button>
             )}
-            <span className={styles.title}>{item.title}</span>
+            <div className={styles.source}>
+                {iconUrl && iconOk && (
+                    <img
+                        className={styles.icon}
+                        src={iconUrl}
+                        alt=""
+                        onError={() => setIconOk(false)}
+                    />
+                )}
+                <span className={styles.sourceName}>{sourceName}</span>
+            </div>
             <button
                 className={styles.iconBtn}
                 onClick={onToggleRead}
@@ -38,6 +66,20 @@ export function ArticleToolbar(
                 aria-label={item.starred ? "Unstar" : "Star"}
                 title={item.starred ? "Unstar" : "Star"}>
                 {item.starred ? <StarFilledIcon /> : <StarOutlineIcon />}
+            </button>
+            <button
+                className={styles.iconBtn}
+                onClick={onToggleHidden}
+                aria-label={item.hidden ? "Unhide" : "Hide"}
+                title={item.hidden ? "Unhide" : "Hide"}>
+                {item.hidden ? <EyeIcon /> : <EyeOffIcon />}
+            </button>
+            <button
+                className={styles.iconBtn}
+                onClick={onOpenInBrowser}
+                aria-label="Open in browser"
+                title="Open in browser">
+                <GlobeIcon />
             </button>
         </div>
     )
@@ -83,6 +125,35 @@ function StarFilledIcon(): React.ReactElement {
     return (
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 1.5l2 4.4 4.8.6-3.5 3.3.9 4.8L8 12.3l-4.2 2.3.9-4.8L1.2 6.5 6 5.9z" />
+        </svg>
+    )
+}
+
+function EyeOffIcon(): React.ReactElement {
+    // hide action
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6.5 4.2A6 6 0 0 1 8 4c3.5 0 6 4 6 4a10 10 0 0 1-1.8 2.1M3.8 5.9A10 10 0 0 0 2 8s2.5 4 6 4a6 6 0 0 0 2.1-.4" />
+            <path d="M2 2l12 12" />
+        </svg>
+    )
+}
+
+function EyeIcon(): React.ReactElement {
+    // unhide action
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" />
+            <circle cx="8" cy="8" r="2" />
+        </svg>
+    )
+}
+
+function GlobeIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+            <circle cx="8" cy="8" r="6" />
+            <path d="M2 8h12M8 2c1.8 1.6 2.8 3.8 2.8 6S9.8 12.4 8 14C6.2 12.4 5.2 10.2 5.2 8S6.2 3.6 8 2z" />
         </svg>
     )
 }

@@ -1,7 +1,7 @@
 .bar {
     display: flex;
     align-items: center;
-    height: 28px;
+    height: 34px;
     padding: 0 8px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border-default);
@@ -10,14 +10,28 @@
     flex-shrink: 0;
 }
 
-.title {
+.source {
     flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding-right: 8px;
+}
+
+.icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.sourceName {
     font-size: 12px;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding-right: 8px;
 }
 
 .iconBtn {
