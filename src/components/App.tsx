@@ -812,6 +812,7 @@ export function App(): React.ReactElement {
                         item={selectedItem}
                         hostStyle={hostStyle}
                         articleId={`${selectedItem.iid}@${remount}`}
+                        sourceName={sourceMeta.get(selectedItem.sourceId)?.name}
                         escEnabled={overlayEscEnabled}
                         onClose={() => setSelectedItem(null)}
                         onToggleRead={onToggleRead}

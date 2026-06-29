@@ -12,3 +12,15 @@ export function formatRelative(ms: number): string {
   if (mo < 12) return `${mo}mo`;
   return `${Math.floor(mo / 12)}y`;
 }
+
+// Absolute date for the article header, localized to the user's OS settings
+// (matches the original Fluent Reader, which shows a full date in-article).
+export function formatArticleDate(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}

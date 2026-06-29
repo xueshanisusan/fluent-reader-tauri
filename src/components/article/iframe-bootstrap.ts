@@ -24,6 +24,18 @@ export interface HostStyle {
     theme: "light" | "dark"
 }
 
+// Header injected at the top of the article body (title + source/author/date),
+// matching the original Fluent Reader's in-article header. All fields are
+// host-supplied plain strings (DB columns), so they're HTML-escaped before
+// interpolation; the title links to the article only when it's an http(s) URL.
+export interface ArticleMeta {
+    title: string
+    link: string
+    dateText: string
+    sourceName: string
+    creator: string | null
+}
+
 export const DEFAULT_HOST_STYLE: HostStyle = {
     fontSize: 16,
     fontFamily: "",
@@ -34,7 +46,7 @@ export const DEFAULT_HOST_STYLE: HostStyle = {
 // --fr-link on :root so the rules in HOST_BASE_CSS (which use these vars
 // with light fallbacks) pick the dark values automatically.
 const HOST_DARK_OVERRIDE = `
-  :root { --fr-fg: #e8e8e8; --fr-bg: #1a1a1a; --fr-link: #6cf; }
+  :root { --fr-fg: #e8e8e8; --fr-bg: #1a1a1a; --fr-link: #6cf; --fr-muted: #999; --fr-border: #333; }
   blockquote { color: #aaa; }
   pre { background: #2a2a2a; }
 `
@@ -54,6 +66,11 @@ export const HOST_BASE_CSS = `
   blockquote { border-left: 3px solid var(--fr-link, #06c); padding-left: 12px; color: #666; margin-left: 0; }
   pre { background: #f4f4f4; padding: 12px; overflow-x: auto; }
   code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; }
+  .fr-article-header { border-bottom: 1px solid var(--fr-border, #eee); padding-bottom: 16px; margin-bottom: 20px; }
+  .fr-title { font-size: 1.7em; line-height: 1.25; font-weight: 600; margin: 0 0 8px; }
+  .fr-title a { color: inherit; text-decoration: none; }
+  .fr-title a:hover { text-decoration: underline; }
+  .fr-meta { font-size: 0.8em; color: var(--fr-muted, #888); margin: 0; }
 `
 
 // Builds a small extra <style> block to override base body font. fontFamily
@@ -73,6 +90,36 @@ function buildHostOverride(style: HostStyle): string {
 
 function clamp(n: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, Math.round(n)))
+}
+
+function escapeHtml(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+}
+
+function isHttpUrl(u: string): boolean {
+    return /^https?:\/\//i.test(u)
+}
+
+// Builds the in-article header HTML. Title is a link only for http(s) URLs
+// (escapeHtml can't neutralize a `javascript:` href on its own); clicks route
+// through the bootstrap link handler like any other article link. The meta
+// line joins the non-empty of source / author / date.
+function buildHeader(meta: ArticleMeta): string {
+    const titleText = escapeHtml(meta.title)
+    const title = isHttpUrl(meta.link)
+        ? `<a href="${escapeHtml(meta.link)}">${titleText}</a>`
+        : titleText
+    const bits = [meta.sourceName, meta.creator ?? "", meta.dateText]
+        .filter(s => s.trim() !== "")
+        .map(escapeHtml)
+        .join(" • ")
+    const metaLine = bits ? `<p class="fr-meta">${bits}</p>` : ""
+    return `<header class="fr-article-header"><h1 class="fr-title">${title}</h1>${metaLine}</header>`
 }
 
 export const IFRAME_BOOTSTRAP = `
@@ -112,15 +159,17 @@ export const IFRAME_BOOTSTRAP = `
 
 export function buildSrcdoc(
     cleanHtml: string,
-    style: HostStyle = DEFAULT_HOST_STYLE
+    style: HostStyle = DEFAULT_HOST_STYLE,
+    meta?: ArticleMeta
 ): string {
+    const header = meta ? buildHeader(meta) : ""
     return `<!doctype html>
 <html><head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <meta name="referrer" content="no-referrer">
 <style>${HOST_BASE_CSS}${buildHostOverride(style)}</style>
 </head><body>
-${cleanHtml}
+${header}${cleanHtml}
 <script>${IFRAME_BOOTSTRAP}</script>
 </body></html>`
 }
