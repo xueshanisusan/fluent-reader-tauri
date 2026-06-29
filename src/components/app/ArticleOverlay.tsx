@@ -71,28 +71,36 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
     }, [escEnabled, onClose])
 
     return (
-        <div className={styles.overlay}>
-            <ArticleToolbar
-                item={item}
-                sourceName={sourceName}
-                iconUrl={iconUrl}
-                onToggleRead={onToggleRead}
-                onToggleStar={onToggleStar}
-                onToggleHidden={onToggleHidden}
-                onOpenInBrowser={onOpenInBrowser}
-                onClose={onClose}
-            />
-            <div className={styles.viewport}>
-                <ArticleView
-                    key={articleId}
-                    html={item.content}
-                    articleId={articleId}
-                    hostStyle={hostStyle}
-                    meta={meta}
-                    onLink={onLink}
-                    onKey={onKey}
-                    onCtxMenu={onCtxMenu}
+        <div
+            className={styles.backdrop}
+            onClick={e => {
+                // Close only when the dimmed backdrop itself is clicked, not the
+                // card (or a drag that ends on it).
+                if (e.target === e.currentTarget) onClose()
+            }}>
+            <div className={styles.card}>
+                <ArticleToolbar
+                    item={item}
+                    sourceName={sourceName}
+                    iconUrl={iconUrl}
+                    onToggleRead={onToggleRead}
+                    onToggleStar={onToggleStar}
+                    onToggleHidden={onToggleHidden}
+                    onOpenInBrowser={onOpenInBrowser}
+                    onClose={onClose}
                 />
+                <div className={styles.viewport}>
+                    <ArticleView
+                        key={articleId}
+                        html={item.content}
+                        articleId={articleId}
+                        hostStyle={hostStyle}
+                        meta={meta}
+                        onLink={onLink}
+                        onKey={onKey}
+                        onCtxMenu={onCtxMenu}
+                    />
+                </div>
             </div>
         </div>
     )
