@@ -111,6 +111,7 @@ export function App(): React.ReactElement {
         unreadCounts,
         setFilter,
         setSelectedItem,
+        onOpenItem,
         loadItems,
         reloadUnreadCounts,
         onToggleRead,
@@ -804,7 +805,7 @@ export function App(): React.ReactElement {
                         onContextMenu={(item, x, y) =>
                             setItemMenu({ item, x, y })
                         }
-                        onSelect={setSelectedItem}
+                        onSelect={onOpenItem}
                     />
                 )}
                 {selectedItem && (
