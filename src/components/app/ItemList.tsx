@@ -2,6 +2,7 @@ import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
 import { ViewType, ViewConfigs, isGridView } from "../../scripts/settings-bridge"
 import { CardInfo } from "./CardInfo"
+import { Highlights } from "./Highlights"
 import { formatRelative } from "../../scripts/format"
 import styles from "./ItemList.module.css"
 
@@ -19,6 +20,10 @@ export interface ItemListProps {
     // reads them — faithful to the original, which applies ViewConfigs to List
     // only. Defaults to ShowCover.
     listViewConfigs?: ViewConfigs
+    // Active search query (debounced). When non-empty, matching substrings in
+    // each card's title/snippet are highlighted via <Highlights>, mirroring the
+    // backend's whole-query LIKE search. Empty/absent → plain text.
+    searchQuery?: string
     onSelect: (it: Item) => void
 }
 
@@ -29,9 +34,17 @@ function containerClass(viewMode: ViewType): string {
 }
 
 export function ItemList(props: ItemListProps): React.ReactElement {
-    const { items, selectedIid, viewMode, sources, listViewConfigs, onSelect } =
-        props
+    const {
+        items,
+        selectedIid,
+        viewMode,
+        sources,
+        listViewConfigs,
+        searchQuery,
+        onSelect,
+    } = props
     const configs = listViewConfigs ?? ViewConfigs.ShowCover
+    const query = searchQuery ?? ""
     return (
         <div className={containerClass(viewMode)}>
             {items.map(it => {
@@ -44,6 +57,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 item={it}
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
+                                query={query}
                                 onSelect={onSelect}
                             />
                         )
@@ -55,6 +69,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
                                 configs={configs}
+                                query={query}
                                 onSelect={onSelect}
                             />
                         )
@@ -65,6 +80,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 item={it}
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
+                                query={query}
                                 onSelect={onSelect}
                             />
                         )
@@ -77,6 +93,7 @@ export function ItemList(props: ItemListProps): React.ReactElement {
                                 item={it}
                                 selected={selected}
                                 source={sources?.get(it.sourceId)}
+                                query={query}
                                 onSelect={onSelect}
                             />
                         )
@@ -92,6 +109,8 @@ interface RowProps {
     source?: SourceMeta
     // List view only; ignored by the other rows. Defaults to ShowCover.
     configs?: ViewConfigs
+    // Active search query; matches in title/snippet are highlighted. "" = none.
+    query?: string
     onSelect: (it: Item) => void
 }
 
@@ -104,6 +123,7 @@ interface RowProps {
 function ListRow(props: RowProps): React.ReactElement {
     const { item, selected, source, onSelect } = props
     const configs = props.configs ?? ViewConfigs.ShowCover
+    const query = props.query ?? ""
     const [imgOk, setImgOk] = React.useState(true)
     const showThumb =
         !!item.thumb && imgOk && !!(configs & ViewConfigs.ShowCover)
@@ -138,9 +158,13 @@ function ListRow(props: RowProps): React.ReactElement {
                     hasRead={item.hasRead}
                     dateMs={item.dateMs}
                 />
-                <h3 className={styles.listTitle}>{item.title}</h3>
+                <h3 className={styles.listTitle}>
+                    <Highlights text={item.title} query={query} />
+                </h3>
                 {showSnippet && (
-                    <p className={styles.listSnippet}>{item.snippet}</p>
+                    <p className={styles.listSnippet}>
+                        <Highlights text={item.snippet} query={query} />
+                    </p>
                 )}
             </div>
         </div>
@@ -154,6 +178,7 @@ function ListRow(props: RowProps): React.ReactElement {
 // shows only via CardInfo's absent unread dot. The star lives in CardInfo.
 function CompactRow(props: RowProps): React.ReactElement {
     const { item, selected, source, onSelect } = props
+    const query = props.query ?? ""
     const cls = [styles.compactCard, selected ? styles.selected : ""]
         .filter(Boolean)
         .join(" ")
@@ -170,9 +195,13 @@ function CompactRow(props: RowProps): React.ReactElement {
                 hideTime
             />
             <div className={styles.compactData}>
-                <span className={styles.compactTitle}>{item.title}</span>
+                <span className={styles.compactTitle}>
+                    <Highlights text={item.title} query={query} />
+                </span>
                 {item.snippet && (
-                    <span className={styles.compactSnippet}>{item.snippet}</span>
+                    <span className={styles.compactSnippet}>
+                        <Highlights text={item.snippet} query={query} />
+                    </span>
                 )}
             </div>
             <span className={styles.compactTime}>
@@ -189,6 +218,7 @@ function CompactRow(props: RowProps): React.ReactElement {
 // snippet filling the card.
 function CardsRow(props: RowProps): React.ReactElement {
     const { item, source, onSelect } = props
+    const query = props.query ?? ""
     const [imgOk, setImgOk] = React.useState(true)
     const showThumb = !!item.thumb && imgOk
     return (
@@ -221,9 +251,13 @@ function CardsRow(props: RowProps): React.ReactElement {
                 hasRead={item.hasRead}
                 dateMs={item.dateMs}
             />
-            <h3 className={styles.cardTitle}>{item.title}</h3>
+            <h3 className={styles.cardTitle}>
+                <Highlights text={item.title} query={query} />
+            </h3>
             {!showThumb && item.snippet && (
-                <p className={styles.cardSnippet}>{item.snippet}</p>
+                <p className={styles.cardSnippet}>
+                    <Highlights text={item.snippet} query={query} />
+                </p>
             )}
         </div>
     )
@@ -236,6 +270,7 @@ function CardsRow(props: RowProps): React.ReactElement {
 // the original — there is no separate title star.
 function MagazineRow(props: RowProps): React.ReactElement {
     const { item, selected, source, onSelect } = props
+    const query = props.query ?? ""
     const [imgOk, setImgOk] = React.useState(true)
     const showThumb = !!item.thumb && imgOk
     const cls = [
@@ -259,9 +294,13 @@ function MagazineRow(props: RowProps): React.ReactElement {
             )}
             <div className={styles.magData}>
                 <div className={styles.magText}>
-                    <h3 className={styles.magTitle}>{item.title}</h3>
+                    <h3 className={styles.magTitle}>
+                        <Highlights text={item.title} query={query} />
+                    </h3>
                     {item.snippet && (
-                        <p className={styles.magSnippet}>{item.snippet}</p>
+                        <p className={styles.magSnippet}>
+                            <Highlights text={item.snippet} query={query} />
+                        </p>
                     )}
                 </div>
                 <CardInfo

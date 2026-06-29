@@ -1,0 +1,9 @@
+/* Search-term highlight. Explicit fg (not inherit) so matches stay legible on
+ * the highlight bg even when the surrounding card text is a faded/muted read
+ * color. */
+.mark {
+    background-color: var(--highlight-bg);
+    color: var(--highlight-fg);
+    border-radius: 2px;
+    padding: 0 1px;
+}
