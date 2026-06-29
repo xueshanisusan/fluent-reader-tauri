@@ -37,9 +37,9 @@ export function ArticleToolbar(
                 <button
                     className={styles.iconBtn}
                     onClick={onClose}
-                    aria-label="Back to list"
-                    title="Back">
-                    <BackIcon />
+                    aria-label="Close"
+                    title="Close (Esc)">
+                    <CloseIcon />
                 </button>
             )}
             <div className={styles.source}>
@@ -85,10 +85,10 @@ export function ArticleToolbar(
     )
 }
 
-function BackIcon(): React.ReactElement {
+function CloseIcon(): React.ReactElement {
     return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M10 3L5 8l5 5" />
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+            <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
         </svg>
     )
 }

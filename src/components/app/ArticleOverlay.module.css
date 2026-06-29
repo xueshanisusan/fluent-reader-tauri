@@ -1,10 +1,26 @@
-.overlay {
-    position: absolute;
+/* Centered reading modal: a dimmed full-window backdrop with a centered
+ * reading card (matches the original Fluent Reader's cards-view article popup).
+ * z-index 90 sits below the 100-tier modals (settings/subscribe/rules) so they
+ * can open above it; Esc handling is coordinated via escEnabled. */
+.backdrop {
+    position: fixed;
     inset: 0;
-    z-index: 5;
+    z-index: 90;
+    background: var(--bg-modal-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4vh 16px;
+}
+
+.card {
+    width: min(820px, 100%);
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: var(--bg-app);
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
     overflow: hidden;
 }
 
