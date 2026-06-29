@@ -22,6 +22,11 @@ export interface UseArticleList {
     unreadCounts: ReadonlyMap<number, number>
     setFilter: (f: Filter) => void
     setSelectedItem: (it: Item | null) => void
+    // Open an item into the article overlay. Selects it and, if it was unread,
+    // marks it read (matches the original Fluent Reader's open-to-read). The
+    // item stays in the list — even under the "unread" filter it only fades; a
+    // later reload drops it.
+    onOpenItem: (item: Item) => void
     loadItems: () => Promise<void>
     reloadUnreadCounts: () => Promise<void>
     applyItemPatch: (iid: number, patch: Partial<Item>) => void
@@ -209,6 +214,24 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         [items, bumpUnread, loadItems]
     )
 
+    const onOpenItem = React.useCallback(
+        (item: Item) => {
+            setSelectedItem(item)
+            const cur = items?.find(i => i.iid === item.iid) ?? item
+            if (cur.hasRead) return
+            // Optimistically mark read on open; applyItemPatch also updates the
+            // just-set selection (same iid) so the toolbar shows the read state.
+            applyItemPatch(cur.iid, { hasRead: true })
+            bumpUnread(cur.sourceId, -1)
+            itemsApi.markRead(cur.iid, true).catch(e => {
+                applyItemPatch(cur.iid, { hasRead: false })
+                bumpUnread(cur.sourceId, +1)
+                console.error("[useArticleList] mark read on open failed", e)
+            })
+        },
+        [items, applyItemPatch, bumpUnread]
+    )
+
     const onToggleRead = React.useCallback(async () => {
         if (selectedItem) await onToggleReadItem(selectedItem)
     }, [selectedItem, onToggleReadItem])
@@ -276,6 +299,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         unreadCounts,
         setFilter,
         setSelectedItem,
+        onOpenItem,
         loadItems,
         reloadUnreadCounts,
         applyItemPatch,
