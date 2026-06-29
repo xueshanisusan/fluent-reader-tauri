@@ -108,6 +108,8 @@ export interface ItemListFilter {
   sourceId?: number;
   hasRead?: boolean;
   starred?: boolean;
+  // false (default) → normal views; true → the Hidden bin (only hidden items).
+  hidden?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -117,11 +119,14 @@ export interface ItemSearchFilter {
   sourceId?: number;
   hasRead?: boolean;
   starred?: boolean;
+  hidden?: boolean;
   limit?: number;
   offset?: number;
 }
 
 export type SearchError = { kind: "db"; message: string };
+
+export type HideError = { kind: "db"; message: string };
 
 export interface BackfillSummary {
   scanned: number;
@@ -174,6 +179,7 @@ export const items = {
       sourceId: filter.sourceId ?? null,
       hasRead: filter.hasRead ?? null,
       starred: filter.starred ?? null,
+      hidden: filter.hidden ?? false,
       limit: filter.limit ?? 100,
       offset: filter.offset ?? 0,
     }),
@@ -183,6 +189,7 @@ export const items = {
       sourceId: filter.sourceId ?? null,
       hasRead: filter.hasRead ?? null,
       starred: filter.starred ?? null,
+      hidden: filter.hidden ?? false,
       limit: filter.limit ?? 50,
       offset: filter.offset ?? 0,
     }),
@@ -192,6 +199,8 @@ export const items = {
     invoke<void>("items_mark_read", { iid, hasRead }),
   setStarred: (iid: number, starred: boolean) =>
     invoke<void>("items_set_starred", { iid, starred }),
+  setHidden: (iid: number, hidden: boolean) =>
+    invoke<void>("items_set_hidden", { iid, hidden }),
   unreadCounts: () => invoke<UnreadCount[]>("items_unread_counts"),
   backfillThumbs: () => invoke<BackfillSummary>("items_backfill_thumbs"),
 };

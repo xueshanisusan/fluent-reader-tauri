@@ -50,6 +50,7 @@ pub fn run() {
             commands::items_insert,
             commands::items_mark_read,
             commands::items_set_starred,
+            commands::items_set_hidden,
             commands::items_unread_counts,
             search::items_search,
             net::net_fetch,

@@ -164,10 +164,11 @@ pub async fn items_list(
     source_id: Option<i64>,
     has_read: Option<bool>,
     starred: Option<bool>,
+    hidden: bool,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Item>, String> {
-    repo::items::list(&state.pool, source_id, has_read, starred, limit, offset)
+    repo::items::list(&state.pool, source_id, has_read, starred, hidden, limit, offset)
         .await
         .map_err(err)
 }
@@ -196,6 +197,17 @@ pub async fn items_set_starred(
     starred: bool,
 ) -> Result<(), String> {
     repo::items::set_starred(&state.pool, iid, starred).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn items_set_hidden(
+    state: State<'_, AppState>,
+    iid: i64,
+    hidden: bool,
+) -> Result<(), HideError> {
+    repo::items::set_hidden(&state.pool, iid, hidden)
+        .await
+        .map_err(|e| HideError::Db { message: e.to_string() })
 }
 
 #[tauri::command]

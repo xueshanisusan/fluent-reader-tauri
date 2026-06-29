@@ -2,7 +2,7 @@ import * as React from "react"
 import { items as itemsApi, type Item } from "../../scripts/db-bridge"
 import { openExternal } from "../../scripts/shell-bridge"
 
-export type Filter = "all" | "unread" | "starred"
+export type Filter = "all" | "unread" | "starred" | "hidden"
 
 export interface UseArticleListOptions {
     sourceId: number | null
@@ -31,6 +31,9 @@ export interface UseArticleList {
     // not just the selected one). onToggleRead/onToggleStar delegate to these.
     onToggleReadItem: (item: Item) => Promise<void>
     onToggleStarItem: (item: Item) => Promise<void>
+    // Hide (hidden=true) or unhide (hidden=false) an item. Either way the item
+    // leaves the current view, so it's removed from the list optimistically.
+    onSetHiddenItem: (item: Item, hidden: boolean) => Promise<void>
     onMarkAllRead: () => Promise<void>
     onSelectNeighbor: (offset: number) => void
     onOpenSelectedLink: () => void
@@ -67,6 +70,9 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         setListError(null)
         try {
             const trimmedQuery = searchQuery.trim()
+            // The "hidden" filter is its own bin (only hidden items); the other
+            // filters operate on the normal (non-hidden) view.
+            const hidden = filter === "hidden"
             const list = trimmedQuery
                 ? await itemsApi.search({
                       query: trimmedQuery,
@@ -74,12 +80,14 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
                       sourceId: sourceId ?? undefined,
                       hasRead: filter === "unread" ? false : undefined,
                       starred: filter === "starred" ? true : undefined,
+                      hidden,
                   })
                 : await itemsApi.list({
                       limit: 50,
                       sourceId: sourceId ?? undefined,
                       hasRead: filter === "unread" ? false : undefined,
                       starred: filter === "starred" ? true : undefined,
+                      hidden,
                   })
             if (cancelledRef.current) return
             setItems(list)
@@ -180,6 +188,27 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         [items, applyItemPatch]
     )
 
+    const onSetHiddenItem = React.useCallback(
+        async (item: Item, hidden: boolean) => {
+            const cur = items?.find(i => i.iid === item.iid) ?? item
+            // Optimistically drop it from the current view and close the overlay
+            // if it was open. Unread counts exclude hidden items, so hiding an
+            // unread one decrements its source; unhiding re-adds it.
+            setItems(prev => (prev ? prev.filter(i => i.iid !== cur.iid) : prev))
+            setSelectedItem(prev => (prev?.iid === cur.iid ? null : prev))
+            if (!cur.hasRead) bumpUnread(cur.sourceId, hidden ? -1 : +1)
+            try {
+                await itemsApi.setHidden(cur.iid, hidden)
+            } catch (e) {
+                console.error("[useArticleList] setHidden failed", e)
+                // Re-sync the list rather than trying to splice it back in place.
+                if (!cur.hasRead) bumpUnread(cur.sourceId, hidden ? +1 : -1)
+                await loadItems()
+            }
+        },
+        [items, bumpUnread, loadItems]
+    )
+
     const onToggleRead = React.useCallback(async () => {
         if (selectedItem) await onToggleReadItem(selectedItem)
     }, [selectedItem, onToggleReadItem])
@@ -254,6 +283,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         onToggleStar,
         onToggleReadItem,
         onToggleStarItem,
+        onSetHiddenItem,
         onMarkAllRead,
         onSelectNeighbor,
         onOpenSelectedLink,

@@ -156,7 +156,7 @@ async fn ingest_apply_stamps_hidden_and_repo_filters_it() {
     repo::items::insert_dedup_in_tx(&mut tx, &items).await.unwrap();
     tx.commit().await.unwrap();
 
-    let visible = repo::items::list(&pool, Some(src.sid), None, None, 100, 0).await.unwrap();
+    let visible = repo::items::list(&pool, Some(src.sid), None, None, false, 100, 0).await.unwrap();
     assert_eq!(visible.len(), 1, "hidden item filtered out of list");
     assert_eq!(visible[0].title, "clean post");
 

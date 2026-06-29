@@ -12,6 +12,7 @@ pub async fn items_search(
     source_id: Option<i64>,
     has_read: Option<bool>,
     starred: Option<bool>,
+    hidden: bool,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Item>, SearchError> {
@@ -25,6 +26,7 @@ pub async fn items_search(
         source_id,
         has_read,
         starred,
+        hidden,
         limit,
         offset,
     )

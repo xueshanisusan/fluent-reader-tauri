@@ -358,13 +358,16 @@ pub mod items {
         source_id: Option<i64>,
         has_read: Option<bool>,
         starred: Option<bool>,
+        // false → normal views (hidden items excluded); true → the Hidden bin
+        // (only hidden items). The sidebar/normal feed always passes false.
+        hidden: bool,
         limit: i64,
         offset: i64,
     ) -> sqlx::Result<Vec<Item>> {
         let mut sql = String::from(
             "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
                     snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
-             FROM items WHERE hidden = 0",
+             FROM items WHERE hidden = ?",
         );
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
@@ -377,7 +380,7 @@ pub mod items {
         }
         sql.push_str(" ORDER BY date_ms DESC, iid DESC LIMIT ? OFFSET ?");
 
-        let mut q = sqlx::query_as::<_, Item>(&sql);
+        let mut q = sqlx::query_as::<_, Item>(&sql).bind(hidden);
         if let Some(v) = source_id {
             q = q.bind(v);
         }
@@ -396,6 +399,8 @@ pub mod items {
         source_id: Option<i64>,
         has_read: Option<bool>,
         starred: Option<bool>,
+        // See list(): false → exclude hidden, true → search within the Hidden bin.
+        hidden: bool,
         limit: i64,
         offset: i64,
     ) -> sqlx::Result<Vec<Item>> {
@@ -410,7 +415,7 @@ pub mod items {
             "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
                     snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
              FROM items \
-             WHERE hidden = 0 AND (title LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')",
+             WHERE hidden = ? AND (title LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')",
         );
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
@@ -424,6 +429,7 @@ pub mod items {
         sql.push_str(" ORDER BY date_ms DESC, iid DESC LIMIT ? OFFSET ?");
 
         let mut q = sqlx::query_as::<_, Item>(&sql)
+            .bind(hidden)
             .bind(pattern.clone())
             .bind(pattern);
         if let Some(v) = source_id {
@@ -486,6 +492,15 @@ pub mod items {
     pub async fn set_starred(pool: &SqlitePool, iid: i64, starred: bool) -> sqlx::Result<()> {
         sqlx::query("UPDATE items SET starred = ? WHERE iid = ?")
             .bind(starred)
+            .bind(iid)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_hidden(pool: &SqlitePool, iid: i64, hidden: bool) -> sqlx::Result<()> {
+        sqlx::query("UPDATE items SET hidden = ? WHERE iid = ?")
+            .bind(hidden)
             .bind(iid)
             .execute(pool)
             .await?;

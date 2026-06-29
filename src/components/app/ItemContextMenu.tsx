@@ -8,6 +8,7 @@ export interface ItemContextMenuProps {
     item: Item
     onToggleRead: () => void
     onToggleStar: () => void
+    onToggleHidden: () => void
     onOpenInBrowser: () => void
     onCopyLink: () => void
     onCopyTitle: () => void
@@ -16,8 +17,9 @@ export interface ItemContextMenuProps {
 
 // Right-click menu for a feed item. Mirrors SourceContextMenu's mechanics
 // (fixed position from clientX/clientY, dismiss on outside mousedown + Escape).
-// Faithful subset of the original Fluent Reader item menu; Hide / full-text
-// fetch are deferred (no item-level backend command yet).
+// Faithful subset of the original Fluent Reader item menu. Hide/Unhide moves
+// an item in or out of the Hidden bin (the "Hidden" filter in ItemListHeader).
+// Full-text fetch / share are still deferred.
 export function ItemContextMenu(
     props: ItemContextMenuProps
 ): React.ReactElement {
@@ -27,6 +29,7 @@ export function ItemContextMenu(
         item,
         onToggleRead,
         onToggleStar,
+        onToggleHidden,
         onOpenInBrowser,
         onCopyLink,
         onCopyTitle,
@@ -65,6 +68,9 @@ export function ItemContextMenu(
             </div>
             <div className={styles.item} onClick={onToggleStar}>
                 {item.starred ? "Unstar" : "Star"}
+            </div>
+            <div className={styles.item} onClick={onToggleHidden}>
+                {item.hidden ? "Unhide" : "Hide"}
             </div>
             <div className={styles.divider} />
             <div
