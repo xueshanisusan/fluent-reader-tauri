@@ -1,0 +1,39 @@
+/* Mirrors SourceContextMenu.module.css (kept separate so the two menus can
+ * diverge), with a non-interactive divider for the action group. */
+.menu {
+    position: fixed;
+    background: var(--bg-app);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 200;
+    min-width: 160px;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.item {
+    padding: 6px 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.item:hover {
+    background: var(--bg-row-active);
+}
+
+.itemDisabled {
+    color: var(--text-faint);
+    cursor: default;
+}
+
+.itemDisabled:hover {
+    background: transparent;
+}
+
+.divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border-default);
+}

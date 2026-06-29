@@ -27,6 +27,10 @@ export interface UseArticleList {
     applyItemPatch: (iid: number, patch: Partial<Item>) => void
     onToggleRead: () => Promise<void>
     onToggleStar: () => Promise<void>
+    // Item-targeted variants for the right-click context menu (act on any row,
+    // not just the selected one). onToggleRead/onToggleStar delegate to these.
+    onToggleReadItem: (item: Item) => Promise<void>
+    onToggleStarItem: (item: Item) => Promise<void>
     onMarkAllRead: () => Promise<void>
     onSelectNeighbor: (offset: number) => void
     onOpenSelectedLink: () => void
@@ -140,32 +144,49 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         []
     )
 
+    // Re-read the item from current state by iid (the caller may pass a stale
+    // snapshot — e.g. captured when a context menu opened — so trusting its
+    // hasRead/starred could flip the wrong way and desync unread counts).
+    const onToggleReadItem = React.useCallback(
+        async (item: Item) => {
+            const cur = items?.find(i => i.iid === item.iid) ?? item
+            const next = !cur.hasRead
+            const delta = next ? -1 : +1
+            applyItemPatch(cur.iid, { hasRead: next })
+            bumpUnread(cur.sourceId, delta)
+            try {
+                await itemsApi.markRead(cur.iid, next)
+            } catch (e) {
+                applyItemPatch(cur.iid, { hasRead: !next })
+                bumpUnread(cur.sourceId, -delta)
+                console.error("[useArticleList] markRead failed", e)
+            }
+        },
+        [items, applyItemPatch, bumpUnread]
+    )
+
+    const onToggleStarItem = React.useCallback(
+        async (item: Item) => {
+            const cur = items?.find(i => i.iid === item.iid) ?? item
+            const next = !cur.starred
+            applyItemPatch(cur.iid, { starred: next })
+            try {
+                await itemsApi.setStarred(cur.iid, next)
+            } catch (e) {
+                applyItemPatch(cur.iid, { starred: !next })
+                console.error("[useArticleList] setStarred failed", e)
+            }
+        },
+        [items, applyItemPatch]
+    )
+
     const onToggleRead = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.hasRead
-        const delta = next ? -1 : +1
-        applyItemPatch(selectedItem.iid, { hasRead: next })
-        bumpUnread(selectedItem.sourceId, delta)
-        try {
-            await itemsApi.markRead(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { hasRead: !next })
-            bumpUnread(selectedItem.sourceId, -delta)
-            console.error("[useArticleList] markRead failed", e)
-        }
-    }, [selectedItem, applyItemPatch, bumpUnread])
+        if (selectedItem) await onToggleReadItem(selectedItem)
+    }, [selectedItem, onToggleReadItem])
 
     const onToggleStar = React.useCallback(async () => {
-        if (!selectedItem) return
-        const next = !selectedItem.starred
-        applyItemPatch(selectedItem.iid, { starred: next })
-        try {
-            await itemsApi.setStarred(selectedItem.iid, next)
-        } catch (e) {
-            applyItemPatch(selectedItem.iid, { starred: !next })
-            console.error("[useArticleList] setStarred failed", e)
-        }
-    }, [selectedItem, applyItemPatch])
+        if (selectedItem) await onToggleStarItem(selectedItem)
+    }, [selectedItem, onToggleStarItem])
 
     const onMarkAllRead = React.useCallback(async () => {
         if (!items) return
@@ -231,6 +252,8 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         applyItemPatch,
         onToggleRead,
         onToggleStar,
+        onToggleReadItem,
+        onToggleStarItem,
         onMarkAllRead,
         onSelectNeighbor,
         onOpenSelectedLink,
