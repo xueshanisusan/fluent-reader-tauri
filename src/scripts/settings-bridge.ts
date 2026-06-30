@@ -56,6 +56,16 @@ export interface ServiceConfigs {
   [extra: string]: unknown;
 }
 
+export interface FeverConfigs extends ServiceConfigs {
+  type: SyncService.Fever;
+  endpoint: string;
+  username: string;
+  fetchLimit: number;
+  // Incremental-fetch cursor, advanced by the backend during item sync.
+  lastId?: number;
+  useInt32?: boolean;
+}
+
 export interface SettingsShape {
   theme: ThemeSettings;
   pac: string;
