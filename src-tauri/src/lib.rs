@@ -8,6 +8,7 @@ pub mod opml;
 pub mod repo;
 pub mod rules;
 pub mod search;
+pub mod service;
 
 use commands::AppState;
 use tauri::Manager;
@@ -59,6 +60,8 @@ pub fn run() {
             feeds::items_backfill_thumbs,
             opml::feeds_import_opml,
             opml::feeds_export_opml,
+            service::service_authenticate,
+            service::service_forget,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2,8 +2,11 @@ import * as React from "react"
 import {
     settings,
     ThemeSettings,
+    SyncService,
     type SettingsShape,
+    type FeverConfigs,
 } from "../../scripts/settings-bridge"
+import { service, describeSyncError } from "../../scripts/service-bridge"
 import { setTheme } from "../../scripts/theme"
 import { openExternal } from "../../scripts/shell-bridge"
 import pkg from "../../../package.json"
@@ -25,7 +28,18 @@ type Draft = Pick<
     "theme" | "fontSize" | "fontFamily" | "fetchInterval" | "notificationsEnabled"
 >
 
-type Tab = "application" | "subscriptions" | "about"
+type Tab = "application" | "subscriptions" | "services" | "about"
+
+// Local editing state for the Services (sync) tab. Password is never prefilled
+// from storage — the api_key lives in the OS keychain, not the settings store.
+type ServiceDraft = {
+    endpoint: string
+    username: string
+    password: string
+    fetchLimit: number
+}
+
+const FEVER_FETCH_LIMIT_DEFAULT = 250
 
 const THEME_LABELS: Array<{ value: ThemeSettings; label: string }> = [
     { value: ThemeSettings.Default, label: "System" },
@@ -36,6 +50,7 @@ const THEME_LABELS: Array<{ value: ThemeSettings; label: string }> = [
 const PIVOT_ITEMS: Array<{ value: Tab; label: string }> = [
     { value: "application", label: "Application" },
     { value: "subscriptions", label: "Subscriptions" },
+    { value: "services", label: "Services" },
     { value: "about", label: "About" },
 ]
 
@@ -57,6 +72,15 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
     const [tab, setTab] = React.useState<Tab>("application")
+    const [svc, setSvc] = React.useState<ServiceDraft>({
+        endpoint: "",
+        username: "",
+        password: "",
+        fetchLimit: FEVER_FETCH_LIMIT_DEFAULT,
+    })
+    const [svcConnected, setSvcConnected] = React.useState(false)
+    const [svcBusy, setSvcBusy] = React.useState(false)
+    const [svcStatus, setSvcStatus] = React.useState<string | null>(null)
 
     React.useEffect(() => {
         if (!open) {
@@ -65,6 +89,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             return
         }
         setTab("application")
+        setSvcStatus(null)
         let cancelled = false
         void (async () => {
             try {
@@ -77,6 +102,26 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     fetchInterval: all.fetchInterval,
                     notificationsEnabled: all.notificationsEnabled,
                 })
+                const cfg = all.serviceConfigs
+                if (cfg && cfg.type === SyncService.Fever) {
+                    const fever = cfg as FeverConfigs
+                    setSvc({
+                        endpoint: fever.endpoint ?? "",
+                        username: fever.username ?? "",
+                        password: "",
+                        fetchLimit:
+                            fever.fetchLimit ?? FEVER_FETCH_LIMIT_DEFAULT,
+                    })
+                    setSvcConnected(true)
+                } else {
+                    setSvc({
+                        endpoint: "",
+                        username: "",
+                        password: "",
+                        fetchLimit: FEVER_FETCH_LIMIT_DEFAULT,
+                    })
+                    setSvcConnected(false)
+                }
             } catch (e) {
                 if (cancelled) return
                 setError("Load failed: " + String((e as Error)?.message ?? e))
@@ -86,6 +131,64 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             cancelled = true
         }
     }, [open])
+
+    const onServiceLogin = React.useCallback(async () => {
+        const endpoint = svc.endpoint.trim()
+        if (!endpoint || !svc.username || !svc.password) {
+            setSvcStatus("Enter endpoint, username, and password.")
+            return
+        }
+        setSvcBusy(true)
+        setSvcStatus(null)
+        try {
+            const ok = await service.authenticate({
+                endpoint,
+                username: svc.username,
+                password: svc.password,
+            })
+            if (ok) {
+                const cfg: FeverConfigs = {
+                    type: SyncService.Fever,
+                    endpoint,
+                    username: svc.username,
+                    fetchLimit: svc.fetchLimit,
+                }
+                await settings.set("serviceConfigs", cfg)
+                setSvc(prev => ({ ...prev, endpoint, password: "" }))
+                setSvcConnected(true)
+                setSvcStatus("Connected.")
+            } else {
+                setSvcStatus(
+                    "Authentication failed — check the endpoint and credentials."
+                )
+            }
+        } catch (e) {
+            setSvcStatus("Error: " + describeSyncError(e))
+        } finally {
+            setSvcBusy(false)
+        }
+    }, [svc])
+
+    const onServiceRemove = React.useCallback(async () => {
+        setSvcBusy(true)
+        setSvcStatus(null)
+        try {
+            await service.forget()
+            await settings.set("serviceConfigs", { type: SyncService.None })
+            setSvc({
+                endpoint: "",
+                username: "",
+                password: "",
+                fetchLimit: FEVER_FETCH_LIMIT_DEFAULT,
+            })
+            setSvcConnected(false)
+            setSvcStatus("Service removed.")
+        } catch (e) {
+            setSvcStatus("Error: " + describeSyncError(e))
+        } finally {
+            setSvcBusy(false)
+        }
+    }, [])
 
     React.useEffect(() => {
         if (!open) return
@@ -340,6 +443,148 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                     extraction was available.
                                 </span>
                             </div>
+                        </div>
+                    ) : tab === "services" ? (
+                        <div className={styles.section}>
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Sync service
+                                </label>
+                                <span className={styles.hint}>
+                                    Connect a Fever-compatible server (FreshRSS,
+                                    Tiny Tiny RSS, Miniflux…) to sync your feeds
+                                    and read/star state. Only Fever is supported
+                                    so far.
+                                </span>
+                            </div>
+
+                            {svcConnected && (
+                                <div className={styles.field}>
+                                    <span className={styles.connectedBadge}>
+                                        Connected as {svc.username || "—"}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Fever API endpoint
+                                </label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    placeholder="https://example.com/api/fever.php"
+                                    value={svc.endpoint}
+                                    disabled={svcBusy}
+                                    onChange={e =>
+                                        setSvc({
+                                            ...svc,
+                                            endpoint: e.target.value,
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    The full Fever API URL. The app appends{" "}
+                                    <code>?api</code> automatically.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>Username</label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    autoComplete="username"
+                                    value={svc.username}
+                                    disabled={svcBusy}
+                                    onChange={e =>
+                                        setSvc({
+                                            ...svc,
+                                            username: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>Password</label>
+                                <input
+                                    type="password"
+                                    className={styles.input}
+                                    autoComplete="current-password"
+                                    placeholder={
+                                        svcConnected
+                                            ? "•••••••• (re-enter to update)"
+                                            : ""
+                                    }
+                                    value={svc.password}
+                                    disabled={svcBusy}
+                                    onChange={e =>
+                                        setSvc({
+                                            ...svc,
+                                            password: e.target.value,
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Stored only as a hashed token in your OS
+                                    keychain — never written to disk in plain
+                                    text.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Fetch limit
+                                </label>
+                                <input
+                                    type="number"
+                                    min={50}
+                                    max={2000}
+                                    className={styles.numberInput}
+                                    value={svc.fetchLimit}
+                                    disabled={svcBusy}
+                                    onChange={e =>
+                                        setSvc({
+                                            ...svc,
+                                            fetchLimit: clamp(
+                                                Number(e.target.value) ||
+                                                    FEVER_FETCH_LIMIT_DEFAULT,
+                                                50,
+                                                2000
+                                            ),
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Max number of articles to pull per sync.
+                                </span>
+                            </div>
+
+                            <div className={styles.opmlRow}>
+                                <button
+                                    className={styles.btn}
+                                    onClick={onServiceLogin}
+                                    disabled={svcBusy}>
+                                    {svcBusy
+                                        ? "Connecting…"
+                                        : svcConnected
+                                        ? "Update credentials"
+                                        : "Login"}
+                                </button>
+                                {svcConnected && (
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        onClick={onServiceRemove}
+                                        disabled={svcBusy}>
+                                        Remove service
+                                    </button>
+                                )}
+                            </div>
+
+                            {svcStatus && (
+                                <div className={styles.hint}>{svcStatus}</div>
+                            )}
                         </div>
                     ) : tab === "about" ? (
                         <div className={styles.section}>
