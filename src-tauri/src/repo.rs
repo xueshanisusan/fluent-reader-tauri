@@ -253,6 +253,88 @@ pub mod sources {
         Ok(())
     }
 
+    // Sync (updateSources): insert a remote-backed source carrying its
+    // service_ref. Only called when no local source shares the URL, so the
+    // UNIQUE(url) constraint won't trip. group_id is left NULL (group import
+    // is a later sync PR).
+    pub async fn create_remote_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        url: &str,
+        name: &str,
+        service_ref: &str,
+    ) -> sqlx::Result<i64> {
+        let next_pos: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM sources WHERE group_id IS NULL",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let sid: i64 = sqlx::query_scalar(
+            "INSERT INTO sources (url, name, service_ref, position) VALUES (?, ?, ?, ?) \
+             RETURNING sid",
+        )
+        .bind(url)
+        .bind(name)
+        .bind(service_ref)
+        .bind(next_pos)
+        .fetch_one(&mut *tx)
+        .await?;
+        Ok(sid)
+    }
+
+    // Sync (group import): assign a source to a group within the transaction.
+    pub async fn set_group_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+        group_id: Option<i64>,
+    ) -> sqlx::Result<()> {
+        sqlx::query("UPDATE sources SET group_id = ? WHERE sid = ?")
+            .bind(group_id)
+            .bind(sid)
+            .execute(&mut *tx)
+            .await?;
+        Ok(())
+    }
+
+    // Sync (updateSources adoption): adopt an existing local source as remote.
+    pub async fn set_service_ref_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+        service_ref: &str,
+    ) -> sqlx::Result<()> {
+        sqlx::query("UPDATE sources SET service_ref = ? WHERE sid = ?")
+            .bind(service_ref)
+            .bind(sid)
+            .execute(&mut *tx)
+            .await?;
+        Ok(())
+    }
+
+    // Sync (updateSources adoption): drop all items of a source so the service
+    // can re-supply them with their service_ref mapping (mirrors the original).
+    pub async fn delete_items_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+    ) -> sqlx::Result<()> {
+        sqlx::query("DELETE FROM items WHERE source_id = ?")
+            .bind(sid)
+            .execute(&mut *tx)
+            .await?;
+        Ok(())
+    }
+
+    // Sync (updateSources): delete a source removed on the service side. The
+    // items FK is ON DELETE CASCADE, so its items go with it.
+    pub async fn delete_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        sid: i64,
+    ) -> sqlx::Result<()> {
+        sqlx::query("DELETE FROM sources WHERE sid = ?")
+            .bind(sid)
+            .execute(&mut *tx)
+            .await?;
+        Ok(())
+    }
+
     // For OPML import: try to insert; if the URL already exists (UNIQUE),
     // skip silently. Returns true iff a row was inserted.
     pub async fn insert_or_ignore_in_tx(

@@ -21,6 +21,10 @@ export interface SettingsModalProps {
     onImportOpml: () => void
     onExportOpml: () => void
     onBackfillThumbs: () => void
+    // Run a Fever source sync for the given (already-stored) endpoint. The app
+    // owns this so it can refresh the sidebar/items afterward. Resolves to a
+    // short status string to show in the Services tab.
+    onSyncService: (endpoint: string, importGroups: boolean) => Promise<string>
 }
 
 type Draft = Pick<
@@ -67,6 +71,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         onImportOpml,
         onExportOpml,
         onBackfillThumbs,
+        onSyncService,
     } = props
     const [draft, setDraft] = React.useState<Draft | null>(null)
     const [saving, setSaving] = React.useState(false)
@@ -152,11 +157,19 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     endpoint,
                     username: svc.username,
                     fetchLimit: svc.fetchLimit,
+                    // First connection imports the server's groups on the next
+                    // sync (cleared afterward); updating an existing connection
+                    // leaves local grouping alone.
+                    ...(svcConnected ? {} : { importGroups: true }),
                 }
                 await settings.set("serviceConfigs", cfg)
                 setSvc(prev => ({ ...prev, endpoint, password: "" }))
                 setSvcConnected(true)
-                setSvcStatus("Connected.")
+                setSvcStatus(
+                    svcConnected
+                        ? "Credentials updated."
+                        : "Connected. Click “Sync now” to import your feeds."
+                )
             } else {
                 setSvcStatus(
                     "Authentication failed — check the endpoint and credentials."
@@ -189,6 +202,37 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             setSvcBusy(false)
         }
     }, [])
+
+    const onServiceSync = React.useCallback(
+        async (forceImportGroups: boolean) => {
+            const endpoint = svc.endpoint.trim()
+            if (!endpoint) {
+                setSvcStatus("Connect a service first.")
+                return
+            }
+            setSvcBusy(true)
+            setSvcStatus("Syncing…")
+            try {
+                const all = await settings.getAll()
+                const cfg = all.serviceConfigs as FeverConfigs
+                const importGroups =
+                    forceImportGroups || Boolean(cfg.importGroups)
+                const status = await onSyncService(endpoint, importGroups)
+                if (importGroups && cfg.type === SyncService.Fever) {
+                    // One-time flag: clear it so later syncs keep local grouping.
+                    const rest = { ...cfg }
+                    delete rest.importGroups
+                    await settings.set("serviceConfigs", rest)
+                }
+                setSvcStatus(status)
+            } catch (e) {
+                setSvcStatus("Sync failed: " + describeSyncError(e))
+            } finally {
+                setSvcBusy(false)
+            }
+        },
+        [svc.endpoint, onSyncService]
+    )
 
     React.useEffect(() => {
         if (!open) return
@@ -572,6 +616,22 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                         ? "Update credentials"
                                         : "Login"}
                                 </button>
+                                {svcConnected && (
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        onClick={() => onServiceSync(false)}
+                                        disabled={svcBusy}>
+                                        Sync now
+                                    </button>
+                                )}
+                                {svcConnected && (
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        onClick={() => onServiceSync(true)}
+                                        disabled={svcBusy}>
+                                        Import groups
+                                    </button>
+                                )}
                                 {svcConnected && (
                                     <button
                                         className={`${styles.btn} ${styles.btnSecondary}`}

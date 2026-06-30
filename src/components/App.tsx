@@ -15,6 +15,7 @@ import {
     type RefreshResult,
 } from "../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
+import { service as serviceApi } from "../scripts/service-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
 import { NavBar } from "./app/NavBar"
 import { SearchBar } from "./app/SearchBar"
@@ -568,6 +569,21 @@ export function App(): React.ReactElement {
         }
     }, [loadItems])
 
+    const onSyncService = React.useCallback(
+        async (endpoint: string, importGroups: boolean): Promise<string> => {
+            setRefreshStatus("syncing service…")
+            const res = await serviceApi.sync(endpoint, importGroups)
+            // Reconciliation changed the source list — refresh sidebar + view.
+            await loadSourcesAndGroups()
+            await loadItems()
+            const groupedNote = res.grouped > 0 ? ` · ${res.grouped} grouped` : ""
+            const status = `Synced · ${res.added} added · ${res.adopted} adopted · ${res.removed} removed${groupedNote}`
+            if (!cancelledRef.current) setRefreshStatus(status)
+            return status
+        },
+        [loadSourcesAndGroups, loadItems]
+    )
+
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {
             console.error("[App] openExternal failed", err)
@@ -705,6 +721,7 @@ export function App(): React.ReactElement {
                 onImportOpml={onImportOpml}
                 onExportOpml={onExportOpml}
                 onBackfillThumbs={onBackfillThumbs}
+                onSyncService={onSyncService}
             />
             <RulesModal
                 sourceId={rulesModalSid}
