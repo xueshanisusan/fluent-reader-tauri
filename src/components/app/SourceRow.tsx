@@ -55,6 +55,7 @@ export function SourceRow(props: SourceRowProps): React.ReactElement {
     }
 
     const rowClass = active ? `${styles.row} ${styles.active}` : styles.row
+    const remote = source.serviceRef != null
     return (
         <div
             className={rowClass}
@@ -66,7 +67,32 @@ export function SourceRow(props: SourceRowProps): React.ReactElement {
             <span className={styles.label} title={source.name}>
                 {source.name}
             </span>
+            {remote && (
+                <span
+                    className={styles.syncBadge}
+                    title="Synced from service"
+                    aria-label="Synced from service">
+                    <CloudIcon />
+                </span>
+            )}
             {unread > 0 && <span className={styles.badge}>{unread}</span>}
         </div>
+    )
+}
+
+function CloudIcon(): React.ReactElement {
+    return (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true">
+            <path d="M4.5 12.5a3 3 0 0 1-.4-5.97 3.5 3.5 0 0 1 6.74-1.06A2.75 2.75 0 0 1 11.5 12.5z" />
+        </svg>
     )
 }

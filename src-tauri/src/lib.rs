@@ -62,6 +62,7 @@ pub fn run() {
             opml::feeds_export_opml,
             service::service_authenticate,
             service::service_forget,
+            service::service_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

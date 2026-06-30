@@ -54,6 +54,15 @@
     text-align: center;
 }
 
+/* Marks a source backed by a remote sync service (has a service_ref), so it's
+ * distinguishable from plain-local subscriptions at a glance. */
+.syncBadge {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
 .badgeMuted {
     background: var(--text-faint);
 }
