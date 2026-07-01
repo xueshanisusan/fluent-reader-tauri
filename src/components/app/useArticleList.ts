@@ -1,6 +1,7 @@
 import * as React from "react"
 import { items as itemsApi, type Item } from "../../scripts/db-bridge"
 import { openExternal } from "../../scripts/shell-bridge"
+import type { MarkKind } from "../../scripts/service-bridge"
 
 export type Filter = "all" | "unread" | "starred" | "hidden"
 
@@ -11,6 +12,12 @@ export interface UseArticleListOptions {
     // passes false (all views open the article overlay only on click), but the
     // option is kept for flexibility. Defaults to true.
     autoSelectFirst?: boolean
+    // Best-effort push of a local read/star change to the sync service. Called
+    // after the local DB mutation succeeds; a no-op when no service is active or
+    // the item isn't service-backed. Fire-and-forget (never awaited).
+    pushItemMark?: (item: Item, kind: MarkKind) => void
+    // Best-effort "mark whole source read" push for onMarkAllRead.
+    pushSourceRead?: (sourceId: number, beforeMs: number) => void
 }
 
 export interface UseArticleList {
@@ -45,7 +52,7 @@ export interface UseArticleList {
 }
 
 export function useArticleList(opts: UseArticleListOptions): UseArticleList {
-    const { sourceId, searchQuery } = opts
+    const { sourceId, searchQuery, pushItemMark, pushSourceRead } = opts
     const autoSelectFirst = opts.autoSelectFirst ?? true
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
@@ -169,13 +176,14 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
             bumpUnread(cur.sourceId, delta)
             try {
                 await itemsApi.markRead(cur.iid, next)
+                pushItemMark?.(cur, next ? "read" : "unread")
             } catch (e) {
                 applyItemPatch(cur.iid, { hasRead: !next })
                 bumpUnread(cur.sourceId, -delta)
                 console.error("[useArticleList] markRead failed", e)
             }
         },
-        [items, applyItemPatch, bumpUnread]
+        [items, applyItemPatch, bumpUnread, pushItemMark]
     )
 
     const onToggleStarItem = React.useCallback(
@@ -185,12 +193,13 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
             applyItemPatch(cur.iid, { starred: next })
             try {
                 await itemsApi.setStarred(cur.iid, next)
+                pushItemMark?.(cur, next ? "saved" : "unsaved")
             } catch (e) {
                 applyItemPatch(cur.iid, { starred: !next })
                 console.error("[useArticleList] setStarred failed", e)
             }
         },
-        [items, applyItemPatch]
+        [items, applyItemPatch, pushItemMark]
     )
 
     const onSetHiddenItem = React.useCallback(
@@ -223,13 +232,16 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
             // just-set selection (same iid) so the toolbar shows the read state.
             applyItemPatch(cur.iid, { hasRead: true })
             bumpUnread(cur.sourceId, -1)
-            itemsApi.markRead(cur.iid, true).catch(e => {
-                applyItemPatch(cur.iid, { hasRead: false })
-                bumpUnread(cur.sourceId, +1)
-                console.error("[useArticleList] mark read on open failed", e)
-            })
+            itemsApi
+                .markRead(cur.iid, true)
+                .then(() => pushItemMark?.(cur, "read"))
+                .catch(e => {
+                    applyItemPatch(cur.iid, { hasRead: false })
+                    bumpUnread(cur.sourceId, +1)
+                    console.error("[useArticleList] mark read on open failed", e)
+                })
         },
-        [items, applyItemPatch, bumpUnread]
+        [items, applyItemPatch, bumpUnread, pushItemMark]
     )
 
     const onToggleRead = React.useCallback(async () => {
@@ -256,6 +268,11 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         )
         setSelectedItem(prev => (prev ? { ...prev, hasRead: true } : prev))
         for (const [sid, n] of sourceDeltas) bumpUnread(sid, -n)
+        // Push each affected source read on the service in one shot (marks the
+        // whole feed read up to now), instead of per item — the original's
+        // markAllRead optimization. Best-effort; local marking is authoritative.
+        const before = Date.now()
+        for (const sid of sourceDeltas.keys()) pushSourceRead?.(sid, before)
         const results = await Promise.allSettled(
             unread.map(it => itemsApi.markRead(it.iid, true))
         )
@@ -266,7 +283,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
             )
             await loadItems()
         }
-    }, [items, loadItems, bumpUnread])
+    }, [items, loadItems, bumpUnread, pushSourceRead])
 
     const onSelectNeighbor = React.useCallback(
         (offset: number) => {

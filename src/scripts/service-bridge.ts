@@ -16,12 +16,17 @@ export interface FeverAuthInput {
   password: string;
 }
 
+/** A read/star mutation pushed to the service. */
+export type MarkKind = "read" | "unread" | "saved" | "unsaved";
+
 /** Outcome of a full sync: source reconciliation (updateSources) + item pull. */
 export interface SyncResult {
   added: number;
   adopted: number;
   removed: number;
   grouped: number;
+  /** Local read/star states changed to match the server (syncItems). */
+  reconciled: number;
   /** Items freshly inserted by the item pull. */
   fetched: number;
   /** Advanced incremental-fetch cursor — persist into the stored FeverConfigs. */
@@ -40,6 +45,19 @@ export const service = {
   /** Forget the stored Fever credentials (on service removal). */
   forget(): Promise<void> {
     return invoke<void>("service_forget");
+  },
+  /**
+   * Push a single item's read/star change to the service. Best-effort — callers
+   * mark locally first and swallow/log any error here (the next sync reconciles).
+   */
+  mark(endpoint: string, serviceRef: string, mark: MarkKind): Promise<void> {
+    return invoke<void>("service_mark", { endpoint, serviceRef, mark });
+  },
+  /**
+   * Mark an entire source read up to `beforeMs` (the markAllRead optimization).
+   */
+  markFeedRead(endpoint: string, serviceRef: string, beforeMs: number): Promise<void> {
+    return invoke<void>("service_mark_feed_read", { endpoint, serviceRef, beforeMs });
   },
   /**
    * Full sync: reconcile local sources with the Fever service's subscriptions,

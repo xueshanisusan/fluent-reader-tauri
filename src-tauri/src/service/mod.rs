@@ -84,6 +84,8 @@ pub struct SyncResult {
     pub adopted: u32,
     pub removed: u32,
     pub grouped: u32,
+    /// Local read/star states changed to match the server (syncItems).
+    pub reconciled: u32,
     /// Items freshly inserted by the item pull (fetchItems).
     pub fetched: u32,
     /// Advanced incremental-fetch cursor; the caller persists these into the
@@ -146,14 +148,44 @@ async fn sync_inner(
     last_id: i64,
     use_int32: bool,
 ) -> Result<SyncResult, SyncError> {
-    // Mirror the original syncWithService order: reconcile the source list first
-    // (so just-adopted/created sources exist to map items onto), then pull items.
+    // Mirror the original syncWithService order: updateSources → syncItems →
+    // fetchItems. syncItems reconciles read/star of existing items (server is
+    // authority; local changes were already pushed in real time); fetchItems
+    // then inserts new items with their server-side read/star already correct.
     let mut result = update_sources(pool, endpoint, api_key, import_groups).await?;
+    result.reconciled = sync_items(pool, endpoint, api_key).await?;
     let fo = fetch_items(pool, endpoint, api_key, fetch_limit as usize, last_id, use_int32).await?;
     result.fetched = fo.fetched;
     result.last_id = fo.last_id;
     result.use_int32 = fo.use_int32;
     Ok(result)
+}
+
+/// Push a single item's read/star state to the service. Best-effort: called by
+/// the frontend after a local mark succeeds, errors are the caller's to swallow.
+#[tauri::command]
+pub async fn service_mark(
+    endpoint: String,
+    service_ref: String,
+    mark: fever::Mark,
+) -> Result<(), SyncError> {
+    let api_key = secrets::load_fever_api_key()
+        .map_err(|e| SyncError::Keyring { message: e.to_string() })?;
+    fever::mark_item(endpoint.trim(), &api_key, &service_ref, mark).await
+}
+
+/// Mark an entire source read up to `before_ms` (the markAllRead optimization).
+#[tauri::command]
+pub async fn service_mark_feed_read(
+    endpoint: String,
+    service_ref: String,
+    before_ms: i64,
+) -> Result<(), SyncError> {
+    let api_key = secrets::load_fever_api_key()
+        .map_err(|e| SyncError::Keyring { message: e.to_string() })?;
+    // Original: floor(time/1000) + 1 second, so "before now" includes now.
+    let before_secs = before_ms / 1000 + 1;
+    fever::mark_feed_read(endpoint.trim(), &api_key, &service_ref, before_secs).await
 }
 
 /// Reconcile local sources against the remote feed list, mirroring the original
@@ -254,13 +286,14 @@ pub async fn reconcile_sources(
 
     tx.commit().await.map_err(db_err)?;
 
-    // Item-pull fields are filled in by service_sync's fetch_items step; source
-    // reconciliation on its own reports zero fetched and an unchanged cursor.
+    // syncItems / fetch_items fields are filled in by service_sync's later steps;
+    // source reconciliation on its own reports zero and an unchanged cursor.
     Ok(SyncResult {
         added,
         adopted,
         removed,
         grouped,
+        reconciled: 0,
         fetched: 0,
         last_id: 0,
         use_int32: false,
@@ -435,4 +468,82 @@ pub async fn ingest_items(
     tx.commit().await.map_err(db_err)?;
 
     Ok(fetched)
+}
+
+/// Reconcile local read/star state with the service (syncItems). Fetches the
+/// server's authoritative unread + saved id sets, then forces local items to
+/// match. The push direction (local → server) happens in real time via
+/// `service_mark`, so here the server is the source of truth. Returns the number
+/// of local rows changed.
+async fn sync_items(
+    pool: &sqlx::SqlitePool,
+    endpoint: &str,
+    api_key: &str,
+) -> Result<u32, SyncError> {
+    // The original issues both id-set requests concurrently (Promise.all).
+    let (unread, saved) = tokio::try_join!(
+        fever::unread_item_ids(endpoint, api_key),
+        fever::saved_item_ids(endpoint, api_key),
+    )?;
+    reconcile_read_star(pool, &unread, &saved).await
+}
+
+/// Pure DB step (no network) — force local items' read/star to match the
+/// server's `unread`/`saved` id sets, mirroring the original `service.ts`
+/// syncItems reconciliation. Split out so it's testable against an in-memory
+/// pool. Returns the number of rows actually changed.
+pub async fn reconcile_read_star(
+    pool: &sqlx::SqlitePool,
+    unread: &HashSet<String>,
+    saved: &HashSet<String>,
+) -> Result<u32, SyncError> {
+    // Locally-divergent candidates: items backed by the service that are
+    // locally unread or locally starred.
+    let rows = repo::items::list_synced_read_star(pool).await.map_err(db_err)?;
+
+    // Consume the server sets as we match: what remains after the loop is
+    // "server says X but no local row reflected it" and drives the inverse fix.
+    let mut unread_remaining = unread.clone();
+    let mut saved_remaining = saved.clone();
+    let mut set_read: Vec<String> = Vec::new(); // locally-unread → server-read
+    let mut set_unstar: Vec<String> = Vec::new(); // locally-starred → server-unstarred
+
+    for (service_ref, has_read, starred) in &rows {
+        if !has_read && !unread_remaining.remove(service_ref) {
+            // Locally unread, but the server doesn't list it as unread → read.
+            set_read.push(service_ref.clone());
+        }
+        if *starred && !saved_remaining.remove(service_ref) {
+            // Locally starred, but the server doesn't list it as saved → unstar.
+            set_unstar.push(service_ref.clone());
+        }
+    }
+
+    let mut changed = 0u32;
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    for r in &set_read {
+        changed += repo::items::set_read_by_service_ref_in_tx(&mut tx, r, true)
+            .await
+            .map_err(db_err)? as u32;
+    }
+    // Server lists these as unread but no local unread row matched → set unread.
+    for r in &unread_remaining {
+        changed += repo::items::set_read_by_service_ref_in_tx(&mut tx, r, false)
+            .await
+            .map_err(db_err)? as u32;
+    }
+    for r in &set_unstar {
+        changed += repo::items::set_starred_by_service_ref_in_tx(&mut tx, r, false)
+            .await
+            .map_err(db_err)? as u32;
+    }
+    // Server lists these as saved but no local starred row matched → set starred.
+    for r in &saved_remaining {
+        changed += repo::items::set_starred_by_service_ref_in_tx(&mut tx, r, true)
+            .await
+            .map_err(db_err)? as u32;
+    }
+    tx.commit().await.map_err(db_err)?;
+
+    Ok(changed)
 }
