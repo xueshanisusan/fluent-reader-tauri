@@ -33,6 +33,7 @@ import {
     ViewType,
     ViewConfigs,
     type SettingsShape,
+    type FeverConfigs,
 } from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
 import {
@@ -572,14 +573,42 @@ export function App(): React.ReactElement {
     const onSyncService = React.useCallback(
         async (endpoint: string, importGroups: boolean): Promise<string> => {
             setRefreshStatus("syncing service…")
-            const res = await serviceApi.sync(endpoint, importGroups)
-            // Reconciliation changed the source list — refresh sidebar + view.
-            await loadSourcesAndGroups()
-            await loadItems()
-            const groupedNote = res.grouped > 0 ? ` · ${res.grouped} grouped` : ""
-            const status = `Synced · ${res.added} added · ${res.adopted} adopted · ${res.removed} removed${groupedNote}`
-            if (!cancelledRef.current) setRefreshStatus(status)
-            return status
+            try {
+                // Read the stored cursor + fetch limit; pass them through and
+                // persist the advanced cursor the backend returns so the next
+                // sync is incremental. Clearing importGroups (a one-time flag) is
+                // owned here too, in the same write, to avoid clobbering the cursor.
+                const cfg = (await settings.get(
+                    "serviceConfigs"
+                )) as FeverConfigs
+                const res = await serviceApi.sync(
+                    endpoint,
+                    importGroups,
+                    cfg.fetchLimit ?? 250,
+                    cfg.lastId ?? 0,
+                    cfg.useInt32 ?? false
+                )
+                const next: FeverConfigs = {
+                    ...cfg,
+                    lastId: res.lastId,
+                    useInt32: res.useInt32,
+                }
+                if (importGroups) delete next.importGroups
+                await settings.set("serviceConfigs", next)
+                // Item pull + reconciliation changed sources and items — refresh.
+                await loadSourcesAndGroups()
+                await loadItems()
+                const groupedNote =
+                    res.grouped > 0 ? ` · ${res.grouped} grouped` : ""
+                const status = `Synced · ${res.added} added · ${res.adopted} adopted · ${res.removed} removed · ${res.fetched} articles${groupedNote}`
+                if (!cancelledRef.current) setRefreshStatus(status)
+                return status
+            } catch (e) {
+                // Reset the status bar so it doesn't sit on "syncing service…".
+                // The Settings modal surfaces the detailed failure; rethrow for it.
+                if (!cancelledRef.current) setRefreshStatus("sync failed")
+                throw e
+            }
         },
         [loadSourcesAndGroups, loadItems]
     )

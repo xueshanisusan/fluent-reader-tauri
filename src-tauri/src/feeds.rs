@@ -128,6 +128,7 @@ fn entry_to_new_item(source_id: i64, entry: feed_rs::model::Entry) -> Option<New
         snippet,
         creator,
         guid,
+        service_ref: None,
         has_read: false,
         starred: false,
         hidden: false,

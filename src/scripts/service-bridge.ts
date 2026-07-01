@@ -16,12 +16,17 @@ export interface FeverAuthInput {
   password: string;
 }
 
-/** Outcome of a source reconciliation (updateSources). */
+/** Outcome of a full sync: source reconciliation (updateSources) + item pull. */
 export interface SyncResult {
   added: number;
   adopted: number;
   removed: number;
   grouped: number;
+  /** Items freshly inserted by the item pull. */
+  fetched: number;
+  /** Advanced incremental-fetch cursor — persist into the stored FeverConfigs. */
+  lastId: number;
+  useInt32: boolean;
 }
 
 export const service = {
@@ -37,13 +42,28 @@ export const service = {
     return invoke<void>("service_forget");
   },
   /**
-   * Reconcile local sources with the Fever service's subscriptions. The api_key
-   * is read from the OS keychain by the backend; pass the stored endpoint. When
-   * `importGroups` is true the server's categories are imported and synced
-   * sources assigned to them (a one-time opt-in — clear the flag afterward).
+   * Full sync: reconcile local sources with the Fever service's subscriptions,
+   * then pull items newer than `lastId`. The api_key is read from the OS keychain
+   * by the backend; pass the stored endpoint, `fetchLimit`, and incremental
+   * cursor (`lastId`/`useInt32`). When `importGroups` is true the server's
+   * categories are imported and synced sources assigned to them (a one-time
+   * opt-in — the caller clears the flag afterward). The returned `lastId`/
+   * `useInt32` must be persisted back into the stored FeverConfigs.
    */
-  sync(endpoint: string, importGroups: boolean): Promise<SyncResult> {
-    return invoke<SyncResult>("service_sync", { endpoint, importGroups });
+  sync(
+    endpoint: string,
+    importGroups: boolean,
+    fetchLimit: number,
+    lastId: number,
+    useInt32: boolean
+  ): Promise<SyncResult> {
+    return invoke<SyncResult>("service_sync", {
+      endpoint,
+      importGroups,
+      fetchLimit,
+      lastId,
+      useInt32,
+    });
   },
 };
 

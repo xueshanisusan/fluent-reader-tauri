@@ -6,6 +6,7 @@ pub mod fever;
 pub mod secrets;
 
 use crate::commands::AppState;
+use crate::models::{NewItem, SourceRule};
 use crate::repo;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -83,6 +84,12 @@ pub struct SyncResult {
     pub adopted: u32,
     pub removed: u32,
     pub grouped: u32,
+    /// Items freshly inserted by the item pull (fetchItems).
+    pub fetched: u32,
+    /// Advanced incremental-fetch cursor; the caller persists these into the
+    /// stored FeverConfigs so the next sync only pulls newer items.
+    pub last_id: i64,
+    pub use_int32: bool,
 }
 
 /// Group-import inputs (the `&groups` titles + the `feeds_groups` map). When
@@ -104,11 +111,49 @@ pub async fn service_sync(
     state: State<'_, AppState>,
     endpoint: String,
     import_groups: bool,
+    fetch_limit: u32,
+    last_id: i64,
+    use_int32: bool,
 ) -> Result<SyncResult, SyncError> {
     let endpoint = endpoint.trim().to_string();
     let api_key = secrets::load_fever_api_key()
         .map_err(|e| SyncError::Keyring { message: e.to_string() })?;
-    update_sources(&state.pool, &endpoint, &api_key, import_groups).await
+    match sync_inner(
+        &state.pool,
+        &endpoint,
+        &api_key,
+        import_groups,
+        fetch_limit,
+        last_id,
+        use_int32,
+    )
+    .await
+    {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            eprintln!("[service_sync] failed: {e:?}");
+            Err(e)
+        }
+    }
+}
+
+async fn sync_inner(
+    pool: &sqlx::SqlitePool,
+    endpoint: &str,
+    api_key: &str,
+    import_groups: bool,
+    fetch_limit: u32,
+    last_id: i64,
+    use_int32: bool,
+) -> Result<SyncResult, SyncError> {
+    // Mirror the original syncWithService order: reconcile the source list first
+    // (so just-adopted/created sources exist to map items onto), then pull items.
+    let mut result = update_sources(pool, endpoint, api_key, import_groups).await?;
+    let fo = fetch_items(pool, endpoint, api_key, fetch_limit as usize, last_id, use_int32).await?;
+    result.fetched = fo.fetched;
+    result.last_id = fo.last_id;
+    result.use_int32 = fo.use_int32;
+    Ok(result)
 }
 
 /// Reconcile local sources against the remote feed list, mirroring the original
@@ -209,11 +254,16 @@ pub async fn reconcile_sources(
 
     tx.commit().await.map_err(db_err)?;
 
+    // Item-pull fields are filled in by service_sync's fetch_items step; source
+    // reconciliation on its own reports zero fetched and an unchanged cursor.
     Ok(SyncResult {
         added,
         adopted,
         removed,
         grouped,
+        fetched: 0,
+        last_id: 0,
+        use_int32: false,
     })
 }
 
@@ -267,4 +317,122 @@ async fn assign_groups(
         grouped += 1;
     }
     Ok(grouped)
+}
+
+/// Outcome of an item pull: how many were freshly inserted plus the advanced
+/// incremental-fetch cursor to persist.
+pub struct FetchOutcome {
+    pub fetched: u32,
+    pub last_id: i64,
+    pub use_int32: bool,
+}
+
+/// Plain-text snippet from item HTML, mirroring the original's
+/// `htmlDecode(html).trim()` (DOM textContent). Entities are decoded by the
+/// parser; we additionally collapse runs of whitespace so list snippets read
+/// cleanly. Builds and drops a `scraper::Html` internally — keep it free of
+/// `.await` so the `!Send` parser never crosses an await point.
+fn html_to_snippet(html: &str) -> String {
+    let frag = scraper::Html::parse_fragment(html);
+    let text: String = frag.root_element().text().collect();
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Pull items newer than the cursor from the Fever service and persist them.
+/// Thin network wrapper around `fever::items` + the pure `ingest_items` step.
+async fn fetch_items(
+    pool: &sqlx::SqlitePool,
+    endpoint: &str,
+    api_key: &str,
+    fetch_limit: usize,
+    last_id: i64,
+    use_int32: bool,
+) -> Result<FetchOutcome, SyncError> {
+    let (remote, new_last_id, new_use_int32) =
+        fever::items(endpoint, api_key, last_id, fetch_limit, use_int32).await?;
+    let fetched = ingest_items(pool, &remote).await?;
+    Ok(FetchOutcome {
+        fetched,
+        last_id: new_last_id,
+        use_int32: new_use_int32,
+    })
+}
+
+/// Pure DB step (no network) — map remote items onto local sources by
+/// service_ref, apply per-source rules, and dedup-insert in one transaction.
+/// Split out so it's testable against an in-memory pool with synthetic items.
+/// Items whose feed has no local source (not yet reconciled) are dropped;
+/// updateSources runs before this in a full sync, so that's only transient.
+pub async fn ingest_items(
+    pool: &sqlx::SqlitePool,
+    remote: &[fever::FeverItem],
+) -> Result<u32, SyncError> {
+    if remote.is_empty() {
+        return Ok(0);
+    }
+
+    // remote feed id -> local sid, via service_ref.
+    let local = repo::sources::list(pool).await.map_err(db_err)?;
+    let mut sid_by_ref: HashMap<String, i64> = HashMap::new();
+    for s in &local {
+        if let Some(r) = &s.service_ref {
+            sid_by_ref.insert(r.clone(), s.sid);
+        }
+    }
+
+    // Build NewItems grouped by source. The snippet strip uses scraper, so this
+    // loop must stay synchronous (no .await) — it is.
+    let mut by_source: HashMap<i64, Vec<NewItem>> = HashMap::new();
+    for it in remote {
+        let Some(&sid) = sid_by_ref.get(&it.feed_id.to_string()) else {
+            continue;
+        };
+        by_source.entry(sid).or_default().push(NewItem {
+            source_id: sid,
+            title: it.title.clone(),
+            link: it.url.clone(),
+            date_ms: it.created_on_time.saturating_mul(1000),
+            thumb: None,
+            content: Some(it.html.clone()),
+            snippet: Some(html_to_snippet(&it.html)),
+            creator: if it.author.is_empty() {
+                None
+            } else {
+                Some(it.author.clone())
+            },
+            guid: None,
+            service_ref: Some(it.id.to_string()),
+            has_read: it.is_read,
+            starred: it.is_saved,
+            hidden: false,
+            notify: false,
+        });
+    }
+
+    // Load rules per source BEFORE opening the tx (reads inside the tx deadlock
+    // against the single-connection pool — same constraint as feeds::ingest_core).
+    let mut rules_by_source: HashMap<i64, Vec<SourceRule>> = HashMap::new();
+    for sid in by_source.keys() {
+        let rules = repo::rules::list_for_source(pool, *sid)
+            .await
+            .map_err(db_err)?;
+        rules_by_source.insert(*sid, rules);
+    }
+    for (sid, items) in by_source.iter_mut() {
+        if let Some(rules) = rules_by_source.get(sid) {
+            crate::rules::apply_all(rules, items);
+        }
+    }
+
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    let mut fetched = 0u32;
+    for items in by_source.values() {
+        let (inserted, _skipped, _mask) = repo::items::insert_dedup_in_tx(&mut tx, items)
+            .await
+            .map_err(db_err)?;
+        fetched += inserted as u32;
+    }
+    tx.commit().await.map_err(db_err)?;
+
+    Ok(fetched)
 }
