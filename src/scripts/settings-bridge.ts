@@ -102,6 +102,17 @@ const DEFAULTS: SettingsShape = {
   notificationsEnabled: true,
 };
 
+// Returns the trimmed Fever endpoint iff a Fever service is configured with a
+// non-empty endpoint, else null. Pure (no store/IPC), so the refresh/background
+// sync flows can cheaply decide whether to sync and it stays unit-testable.
+export function isFeverActive(
+  cfg: ServiceConfigs | null | undefined
+): string | null {
+  if (!cfg || cfg.type !== SyncService.Fever) return null;
+  const endpoint = (cfg as FeverConfigs).endpoint?.trim();
+  return endpoint ? endpoint : null;
+}
+
 const STORE_FILE = "settings.json";
 
 let storePromise: Promise<Store> | null = null;
