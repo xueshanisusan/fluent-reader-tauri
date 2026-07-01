@@ -562,6 +562,51 @@ pub mod items {
         Ok(inserted)
     }
 
+    // Sync (syncItems): local items backed by a service, restricted to the
+    // states that can diverge from the server — locally unread OR locally
+    // starred. Mirrors the original's reconcile query. Returns (service_ref,
+    // has_read, starred); service_ref is guaranteed non-null by the filter.
+    pub async fn list_synced_read_star(
+        pool: &SqlitePool,
+    ) -> sqlx::Result<Vec<(String, bool, bool)>> {
+        sqlx::query_as::<_, (String, bool, bool)>(
+            "SELECT service_ref, has_read, starred FROM items \
+             WHERE service_ref IS NOT NULL AND (has_read = 0 OR starred = 1)",
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    // Sync (syncItems): force an item's read state to match the server, keyed by
+    // its service_ref. No-ops when the ref isn't present locally.
+    pub async fn set_read_by_service_ref_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        service_ref: &str,
+        has_read: bool,
+    ) -> sqlx::Result<u64> {
+        let res = sqlx::query("UPDATE items SET has_read = ? WHERE service_ref = ?")
+            .bind(has_read)
+            .bind(service_ref)
+            .execute(&mut *tx)
+            .await?;
+        Ok(res.rows_affected())
+    }
+
+    // Sync (syncItems): force an item's star state to match the server, keyed by
+    // its service_ref.
+    pub async fn set_starred_by_service_ref_in_tx(
+        tx: &mut sqlx::SqliteConnection,
+        service_ref: &str,
+        starred: bool,
+    ) -> sqlx::Result<u64> {
+        let res = sqlx::query("UPDATE items SET starred = ? WHERE service_ref = ?")
+            .bind(starred)
+            .bind(service_ref)
+            .execute(&mut *tx)
+            .await?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn mark_read(pool: &SqlitePool, iid: i64, has_read: bool) -> sqlx::Result<()> {
         sqlx::query("UPDATE items SET has_read = ? WHERE iid = ?")
             .bind(has_read)

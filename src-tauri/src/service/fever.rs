@@ -6,6 +6,7 @@
 use super::SyncError;
 use md5::{Digest, Md5};
 use reqwest::Client;
+use std::collections::HashSet;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -315,6 +316,93 @@ pub async fn items(
         collected.len()
     );
     Ok((collected, new_last_id, use_int32))
+}
+
+/// A read/star mutation to push to the server (`&mark=item&as=...`). Deserialized
+/// straight from the frontend command payload ("read"|"unread"|"saved"|"unsaved").
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Mark {
+    Read,
+    Unread,
+    Saved,
+    Unsaved,
+}
+
+impl Mark {
+    fn as_str(self) -> &'static str {
+        match self {
+            Mark::Read => "read",
+            Mark::Unread => "unread",
+            Mark::Saved => "saved",
+            Mark::Unsaved => "unsaved",
+        }
+    }
+}
+
+/// Push a single item's read/star state to the server (`&mark=item&as=…&id=…`).
+/// Best-effort — the caller treats failures as non-fatal (the next syncItems
+/// pull reconciles), matching the original's `markItem` try/catch.
+pub async fn mark_item(
+    endpoint: &str,
+    api_key: &str,
+    service_ref: &str,
+    mark: Mark,
+) -> Result<(), SyncError> {
+    fetch_api(
+        endpoint,
+        api_key,
+        "",
+        &format!("&mark=item&as={}&id={service_ref}", mark.as_str()),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Mark an entire feed read up to `before` (Unix seconds) — the original's
+/// markAllRead optimization (`&mark=feed&as=read&id=…&before=…`).
+pub async fn mark_feed_read(
+    endpoint: &str,
+    api_key: &str,
+    service_ref: &str,
+    before_secs: i64,
+) -> Result<(), SyncError> {
+    fetch_api(
+        endpoint,
+        api_key,
+        "",
+        &format!("&mark=feed&as=read&id={service_ref}&before={before_secs}"),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Parse a Fever comma-separated id string field (e.g. `unread_item_ids`) into a
+/// set of ids. Empty/absent → empty set.
+fn parse_id_set(json: &serde_json::Value, field: &str) -> Result<HashSet<String>, SyncError> {
+    let s = json
+        .get(field)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| SyncError::Parse {
+            message: format!("missing '{field}' string in response"),
+        })?;
+    Ok(s.split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(String::from)
+        .collect())
+}
+
+/// The server's authoritative set of unread item ids (`&unread_item_ids`).
+pub async fn unread_item_ids(endpoint: &str, api_key: &str) -> Result<HashSet<String>, SyncError> {
+    let json = fetch_api(endpoint, api_key, "&unread_item_ids", "").await?;
+    parse_id_set(&json, "unread_item_ids")
+}
+
+/// The server's authoritative set of saved (starred) item ids (`&saved_item_ids`).
+pub async fn saved_item_ids(endpoint: &str, api_key: &str) -> Result<HashSet<String>, SyncError> {
+    let json = fetch_api(endpoint, api_key, "&saved_item_ids", "").await?;
+    parse_id_set(&json, "saved_item_ids")
 }
 
 /// Fetch the user's group (category) titles (`&groups`).

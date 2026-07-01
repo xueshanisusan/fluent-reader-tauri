@@ -15,7 +15,10 @@ import {
     type RefreshResult,
 } from "../scripts/feeds"
 import { feeds as feedsApi, type DiscoveredFeed } from "../scripts/feeds-bridge"
-import { service as serviceApi } from "../scripts/service-bridge"
+import {
+    service as serviceApi,
+    type MarkKind,
+} from "../scripts/service-bridge"
 import { startAutoRefresh } from "../scripts/auto-refresh"
 import { NavBar } from "./app/NavBar"
 import { SearchBar } from "./app/SearchBar"
@@ -32,6 +35,7 @@ import {
     settings,
     ViewType,
     ViewConfigs,
+    SyncService,
     type SettingsShape,
     type FeverConfigs,
 } from "../scripts/settings-bridge"
@@ -97,12 +101,57 @@ export function App(): React.ReactElement {
         null
     )
 
+    // Push a local read/star change to the sync service (Fever), best-effort. A
+    // null serviceRef or non-Fever service is a no-op. Fire-and-forget: the UI
+    // already updated locally and the next sync reconciles — this mirrors the
+    // original's real-time markItem. Config is read fresh so a just-connected
+    // service is picked up without an app reload.
+    const pushItemMark = React.useCallback((item: Item, kind: MarkKind) => {
+        if (!item.serviceRef) return
+        void (async () => {
+            try {
+                const cfg = await settings.get("serviceConfigs")
+                if (cfg.type !== SyncService.Fever) return
+                const endpoint = (cfg as FeverConfigs).endpoint
+                if (endpoint) await serviceApi.mark(endpoint, item.serviceRef!, kind)
+            } catch (e) {
+                console.error("[App] push item mark failed", e)
+            }
+        })()
+    }, [])
+
+    // Mark an entire source read on the service (the markAllRead optimization).
+    const pushSourceRead = React.useCallback(
+        (sourceId: number, beforeMs: number) => {
+            const src = sources.find(s => s.sid === sourceId)
+            if (!src?.serviceRef) return
+            void (async () => {
+                try {
+                    const cfg = await settings.get("serviceConfigs")
+                    if (cfg.type !== SyncService.Fever) return
+                    const endpoint = (cfg as FeverConfigs).endpoint
+                    if (endpoint)
+                        await serviceApi.markFeedRead(
+                            endpoint,
+                            src.serviceRef!,
+                            beforeMs
+                        )
+                } catch (e) {
+                    console.error("[App] push source read failed", e)
+                }
+            })()
+        },
+        [sources]
+    )
+
     const list = useArticleList({
         sourceId: selectedSourceId,
         searchQuery,
         // All views use the full-width feed + article overlay, so nothing is
         // auto-opened — the overlay appears only when the user clicks an item.
         autoSelectFirst: false,
+        pushItemMark,
+        pushSourceRead,
     })
     const {
         items,
@@ -600,7 +649,9 @@ export function App(): React.ReactElement {
                 await loadItems()
                 const groupedNote =
                     res.grouped > 0 ? ` · ${res.grouped} grouped` : ""
-                const status = `Synced · ${res.added} added · ${res.adopted} adopted · ${res.removed} removed · ${res.fetched} articles${groupedNote}`
+                const reconciledNote =
+                    res.reconciled > 0 ? ` · ${res.reconciled} synced` : ""
+                const status = `Synced · ${res.added} added · ${res.adopted} adopted · ${res.removed} removed · ${res.fetched} articles${reconciledNote}${groupedNote}`
                 if (!cancelledRef.current) setRefreshStatus(status)
                 return status
             } catch (e) {

@@ -63,6 +63,8 @@ pub fn run() {
             service::service_authenticate,
             service::service_forget,
             service::service_sync,
+            service::service_mark,
+            service::service_mark_feed_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

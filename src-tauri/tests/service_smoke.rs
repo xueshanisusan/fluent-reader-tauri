@@ -1,8 +1,11 @@
 use fluent_reader_lib::db;
 use fluent_reader_lib::models::{NewItem, NewRule, NewSource};
 use fluent_reader_lib::repo;
-use fluent_reader_lib::service::{ingest_items, reconcile_sources, GroupImport, SyncResult};
+use fluent_reader_lib::service::{
+    ingest_items, reconcile_read_star, reconcile_sources, GroupImport, SyncResult,
+};
 use fluent_reader_lib::service::fever::{FeedGroup, FeverItem, RemoteFeed, RemoteGroup};
+use std::collections::HashSet;
 
 async fn make_local(pool: &sqlx::SqlitePool, url: &str, name: &str) -> i64 {
     repo::sources::create(
@@ -341,4 +344,89 @@ async fn ingest_applies_source_rules() {
         .find(|i| i.title == "Just chatting")
         .unwrap();
     assert!(!chat.has_read, "non-matching item untouched");
+}
+
+fn refset(refs: &[&str]) -> HashSet<String> {
+    refs.iter().map(|s| s.to_string()).collect()
+}
+
+/// Seed one service-backed local item with explicit read/star flags via the real
+/// ingest path (which stamps service_ref = the Fever item id).
+async fn seed_item(pool: &sqlx::SqlitePool, id: i64, feed_id: i64, read: bool, saved: bool) {
+    let mut it = fitem(id, feed_id, &format!("https://x/{id}"), "T", "body");
+    it.is_read = read;
+    it.is_saved = saved;
+    ingest_items(pool, &[it]).await.unwrap();
+}
+
+async fn item_by_ref(pool: &sqlx::SqlitePool, service_ref: &str) -> (bool, bool) {
+    let items = repo::items::list(pool, None, None, None, false, 100, 0)
+        .await
+        .unwrap();
+    let it = items
+        .into_iter()
+        .find(|i| i.service_ref.as_deref() == Some(service_ref))
+        .expect("item present");
+    (it.has_read, it.starred)
+}
+
+#[tokio::test]
+async fn reconcile_read_star_marks_read_when_server_dropped_from_unread() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+    // Local item is unread; server no longer lists it as unread → mark read.
+    seed_item(&pool, 100, 10, false, false).await;
+
+    let changed = reconcile_read_star(&pool, &refset(&[]), &refset(&[]))
+        .await
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert_eq!(item_by_ref(&pool, "100").await, (true, false));
+}
+
+#[tokio::test]
+async fn reconcile_read_star_marks_unread_when_server_lists_unread() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+    // Local item is read; server still lists it unread → flip back to unread.
+    seed_item(&pool, 101, 10, true, false).await;
+
+    let changed = reconcile_read_star(&pool, &refset(&["101"]), &refset(&[]))
+        .await
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert_eq!(item_by_ref(&pool, "101").await, (false, false));
+}
+
+#[tokio::test]
+async fn reconcile_read_star_stars_when_server_lists_saved() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+    // Unstarred locally; server says saved. Keep it unread (in server unread set)
+    // so only the star flips.
+    seed_item(&pool, 102, 10, false, false).await;
+
+    let changed = reconcile_read_star(&pool, &refset(&["102"]), &refset(&["102"]))
+        .await
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert_eq!(item_by_ref(&pool, "102").await, (false, true));
+}
+
+#[tokio::test]
+async fn reconcile_read_star_unstars_when_server_dropped_from_saved() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+    // Locally starred + read; server no longer lists it saved → unstar, keep read.
+    seed_item(&pool, 103, 10, true, true).await;
+
+    let changed = reconcile_read_star(&pool, &refset(&[]), &refset(&[]))
+        .await
+        .unwrap();
+    assert_eq!(changed, 1);
+    assert_eq!(item_by_ref(&pool, "103").await, (true, false));
 }
