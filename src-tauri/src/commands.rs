@@ -162,15 +162,25 @@ pub async fn rules_delete(state: State<'_, AppState>, rid: i64) -> Result<(), St
 pub async fn items_list(
     state: State<'_, AppState>,
     source_id: Option<i64>,
+    group_id: Option<i64>,
     has_read: Option<bool>,
     starred: Option<bool>,
     hidden: bool,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Item>, String> {
-    repo::items::list(&state.pool, source_id, has_read, starred, hidden, limit, offset)
-        .await
-        .map_err(err)
+    repo::items::list(
+        &state.pool,
+        source_id,
+        group_id,
+        has_read,
+        starred,
+        hidden,
+        limit,
+        offset,
+    )
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]

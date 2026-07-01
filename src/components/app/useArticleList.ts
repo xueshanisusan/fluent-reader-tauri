@@ -7,6 +7,9 @@ export type Filter = "all" | "unread" | "starred" | "hidden"
 
 export interface UseArticleListOptions {
     sourceId: number | null
+    // When set, the list is scoped to all sources in this group (a whole-group
+    // feed). Mutually exclusive with sourceId — the App passes one or the other.
+    groupId: number | null
     searchQuery: string
     // When true, the first article is auto-selected once a list loads. The app
     // passes false (all views open the article overlay only on click), but the
@@ -52,7 +55,7 @@ export interface UseArticleList {
 }
 
 export function useArticleList(opts: UseArticleListOptions): UseArticleList {
-    const { sourceId, searchQuery, pushItemMark, pushSourceRead } = opts
+    const { sourceId, groupId, searchQuery, pushItemMark, pushSourceRead } = opts
     const autoSelectFirst = opts.autoSelectFirst ?? true
     const [items, setItems] = React.useState<Item[] | null>(null)
     const [selectedItem, setSelectedItem] = React.useState<Item | null>(null)
@@ -90,6 +93,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
                       query: trimmedQuery,
                       limit: 50,
                       sourceId: sourceId ?? undefined,
+                      groupId: groupId ?? undefined,
                       hasRead: filter === "unread" ? false : undefined,
                       starred: filter === "starred" ? true : undefined,
                       hidden,
@@ -97,6 +101,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
                 : await itemsApi.list({
                       limit: 50,
                       sourceId: sourceId ?? undefined,
+                      groupId: groupId ?? undefined,
                       hasRead: filter === "unread" ? false : undefined,
                       starred: filter === "starred" ? true : undefined,
                       hidden,
@@ -116,7 +121,7 @@ export function useArticleList(opts: UseArticleListOptions): UseArticleList {
         } finally {
             if (!cancelledRef.current) setListLoading(false)
         }
-    }, [filter, sourceId, searchQuery, reloadUnreadCounts])
+    }, [filter, sourceId, groupId, searchQuery, reloadUnreadCounts])
 
     React.useEffect(() => {
         cancelledRef.current = false

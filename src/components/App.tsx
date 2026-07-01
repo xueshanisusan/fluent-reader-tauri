@@ -82,15 +82,23 @@ function formatRefreshSummary(results: RefreshResult[]): string {
     return out
 }
 
+// What the sidebar has selected: everything, one source, or a whole group.
+// A group resolves (in the backend) to all its member sources' items.
+type Selection =
+    | { kind: "all" }
+    | { kind: "source"; sid: number }
+    | { kind: "group"; gid: number }
+
 export function App(): React.ReactElement {
     const [sources, setSources] = React.useState<Source[]>([])
     const [groups, setGroups] = React.useState<Group[]>([])
     const [expandedGroups, setExpandedGroups] = React.useState<
         ReadonlySet<number>
     >(() => new Set())
-    const [selectedSourceId, setSelectedSourceId] = React.useState<
-        number | null
-    >(null)
+    const [selection, setSelection] = React.useState<Selection>({ kind: "all" })
+    const selectedSourceId =
+        selection.kind === "source" ? selection.sid : null
+    const selectedGroupId = selection.kind === "group" ? selection.gid : null
     const [searchInput, setSearchInput] = React.useState("")
     const [searchQuery, setSearchQuery] = React.useState("")
 
@@ -148,6 +156,7 @@ export function App(): React.ReactElement {
 
     const list = useArticleList({
         sourceId: selectedSourceId,
+        groupId: selectedGroupId,
         searchQuery,
         // All views use the full-width feed + article overlay, so nothing is
         // auto-opened — the overlay appears only when the user clicks an item.
@@ -451,7 +460,11 @@ export function App(): React.ReactElement {
     }, [refreshInFlight, loadItems, logs])
 
     const onSelectSource = React.useCallback((sid: number | null) => {
-        setSelectedSourceId(sid)
+        setSelection(sid === null ? { kind: "all" } : { kind: "source", sid })
+    }, [])
+
+    const onSelectGroup = React.useCallback((gid: number) => {
+        setSelection({ kind: "group", gid })
     }, [])
 
     const onChangeViewMode = React.useCallback(
@@ -530,7 +543,8 @@ export function App(): React.ReactElement {
                 await sourcesApi.delete(s.sid)
                 if (cancelledRef.current) return
                 setSources(prev => prev.filter(x => x.sid !== s.sid))
-                if (selectedSourceId === s.sid) setSelectedSourceId(null)
+                if (selection.kind === "source" && selection.sid === s.sid)
+                    setSelection({ kind: "all" })
                 await loadItems()
                 await reloadUnreadCounts()
             } catch (e) {
@@ -540,7 +554,7 @@ export function App(): React.ReactElement {
                 )
             }
         },
-        [selectedSourceId, loadItems, reloadUnreadCounts]
+        [selection, loadItems, reloadUnreadCounts]
     )
 
     const onImportOpml = React.useCallback(() => {
@@ -834,7 +848,7 @@ export function App(): React.ReactElement {
                 onMarkAllRead={onMarkAllRead}
                 onRefresh={onRefresh}
                 onOpenSettings={() => setSettingsOpen(true)}
-                onJumpToSource={setSelectedSourceId}
+                onJumpToSource={onSelectSource}
                 onClearLogs={logs.clear}
                 viewMode={appSettings?.view ?? ViewType.Cards}
                 listViewConfigs={
@@ -898,8 +912,10 @@ export function App(): React.ReactElement {
                         groups={groups}
                         unreadCounts={unreadCounts}
                         selectedSourceId={selectedSourceId}
+                        selectedGroupId={selectedGroupId}
                         expandedGroups={expandedGroups}
                         onSelectSource={onSelectSource}
+                        onSelectGroup={onSelectGroup}
                         onToggleGroup={onToggleGroup}
                         onRenameSource={onRenameSource}
                         onEditRules={setRulesModalSid}

@@ -438,6 +438,10 @@ pub mod items {
     pub async fn list(
         pool: &SqlitePool,
         source_id: Option<i64>,
+        // Restrict to sources in this group (a whole-group feed). Independent of
+        // source_id; the sidebar passes one or the other, never both. An empty
+        // group yields an empty IN-set, so no items — which is the desired view.
+        group_id: Option<i64>,
         has_read: Option<bool>,
         starred: Option<bool>,
         // false → normal views (hidden items excluded); true → the Hidden bin
@@ -454,6 +458,9 @@ pub mod items {
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
         }
+        if group_id.is_some() {
+            sql.push_str(" AND source_id IN (SELECT sid FROM sources WHERE group_id = ?)");
+        }
         if has_read.is_some() {
             sql.push_str(" AND has_read = ?");
         }
@@ -464,6 +471,9 @@ pub mod items {
 
         let mut q = sqlx::query_as::<_, Item>(&sql).bind(hidden);
         if let Some(v) = source_id {
+            q = q.bind(v);
+        }
+        if let Some(v) = group_id {
             q = q.bind(v);
         }
         if let Some(v) = has_read {
@@ -479,6 +489,8 @@ pub mod items {
         pool: &SqlitePool,
         query: &str,
         source_id: Option<i64>,
+        // See list(): restrict to a whole group's sources; independent of source_id.
+        group_id: Option<i64>,
         has_read: Option<bool>,
         starred: Option<bool>,
         // See list(): false → exclude hidden, true → search within the Hidden bin.
@@ -502,6 +514,9 @@ pub mod items {
         if source_id.is_some() {
             sql.push_str(" AND source_id = ?");
         }
+        if group_id.is_some() {
+            sql.push_str(" AND source_id IN (SELECT sid FROM sources WHERE group_id = ?)");
+        }
         if has_read.is_some() {
             sql.push_str(" AND has_read = ?");
         }
@@ -515,6 +530,9 @@ pub mod items {
             .bind(pattern.clone())
             .bind(pattern);
         if let Some(v) = source_id {
+            q = q.bind(v);
+        }
+        if let Some(v) = group_id {
             q = q.bind(v);
         }
         if let Some(v) = has_read {

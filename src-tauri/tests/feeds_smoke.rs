@@ -75,7 +75,7 @@ async fn ingest_200_inserts_and_persists_cache_headers() {
         IngestionOutcome::NotModified { .. } => panic!("expected Updated, got NotModified"),
     }
 
-    let items = repo::items::list(&pool, Some(sid), None, None, false, 10, 0)
+    let items = repo::items::list(&pool, Some(sid), None, None, None, false, 10, 0)
         .await
         .expect("list items");
     assert_eq!(items.len(), 2);
@@ -128,7 +128,7 @@ async fn ingest_304_skips_insert_but_updates_last_fetched() {
         IngestionOutcome::Updated { .. } => panic!("expected NotModified"),
     }
 
-    let items = repo::items::list(&pool, Some(sid), None, None, false, 10, 0)
+    let items = repo::items::list(&pool, Some(sid), None, None, None, false, 10, 0)
         .await
         .expect("list items");
     assert_eq!(items.len(), 2, "no new items on 304");
@@ -257,7 +257,7 @@ async fn ingest_dedup_on_identical_200_body() {
         IngestionOutcome::NotModified { .. } => panic!("expected Updated/0 inserted"),
     }
 
-    let items = repo::items::list(&pool, Some(sid), None, None, false, 10, 0)
+    let items = repo::items::list(&pool, Some(sid), None, None, None, false, 10, 0)
         .await
         .expect("list items");
     assert_eq!(items.len(), 2, "still just 2 items total");
@@ -306,7 +306,7 @@ async fn backfill_fills_missing_thumbs_from_content() {
     assert_eq!(summary.scanned, 2, "two thumbless rows scanned (thumbed row excluded)");
     assert_eq!(summary.updated, 1, "one row gained a thumb");
 
-    let all = repo::items::list(&pool, Some(sid), None, None, false, 10, 0)
+    let all = repo::items::list(&pool, Some(sid), None, None, None, false, 10, 0)
         .await
         .expect("list");
     let by_title = |t: &str| all.iter().find(|i| i.title == t).expect("item present");

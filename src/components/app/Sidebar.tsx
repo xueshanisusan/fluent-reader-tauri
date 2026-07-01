@@ -10,8 +10,10 @@ export interface SidebarProps {
     groups: Group[]
     unreadCounts: ReadonlyMap<number, number>
     selectedSourceId: number | null
+    selectedGroupId: number | null
     expandedGroups: ReadonlySet<number>
     onSelectSource: (sid: number | null) => void
+    onSelectGroup: (gid: number) => void
     onToggleGroup: (gid: number, expanded: boolean) => void
     onRenameSource: (sid: number, name: string) => void
     onEditRules: (sid: number) => void
@@ -32,8 +34,10 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
         groups,
         unreadCounts,
         selectedSourceId,
+        selectedGroupId,
         expandedGroups,
         onSelectSource,
+        onSelectGroup,
         onToggleGroup,
         onRenameSource,
         onEditRules,
@@ -139,7 +143,9 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
                         key={g.gid}
                         name={g.name}
                         expanded={expanded}
+                        selected={selectedGroupId === g.gid}
                         unread={groupUnread(g.gid)}
+                        onSelect={() => onSelectGroup(g.gid)}
                         onToggleExpand={() => onToggleGroup(g.gid, !expanded)}>
                         {children.map(renderSource)}
                     </GroupRow>
