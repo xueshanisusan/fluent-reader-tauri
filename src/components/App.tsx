@@ -33,10 +33,12 @@ import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
 import {
     settings,
+    isFeverActive,
     ViewType,
     ViewConfigs,
     SyncService,
     type SettingsShape,
+    type ServiceConfigs,
     type FeverConfigs,
 } from "../scripts/settings-bridge"
 import { useLogStore } from "../scripts/log-store"
@@ -252,6 +254,15 @@ export function App(): React.ReactElement {
         }
     }, [])
 
+    // Service sync woven into the refresh flows. serviceSyncInFlightRef skips an
+    // overlapping sync so a slow sync + a Refresh click (or a background tick)
+    // don't pile up. syncServiceRef holds the latest syncServiceIfActive so
+    // onRefresh and the background timer can invoke it without a declaration-
+    // order cycle (it's defined after onSyncService, below) and without
+    // re-subscribing the timer whenever that callback's identity changes.
+    const serviceSyncInFlightRef = React.useRef(false)
+    const syncServiceRef = React.useRef<() => Promise<void>>(async () => {})
+
     const loadSourcesAndGroups = React.useCallback(async () => {
         try {
             const [srcList, grpList] = await Promise.all([
@@ -406,15 +417,28 @@ export function App(): React.ReactElement {
         if (refreshInFlight) return
         setRefreshInFlight(true)
         setRefreshStatus("refreshing…")
-        // Capture source names BEFORE the await so a delete/rename mid-refresh
-        // can't blank out the log row's display name.
-        const names = new Map(sources.map(s => [s.sid, s.name]))
         try {
-            const sids = sources.map(s => s.sid)
-            const results = await refreshAll(sids)
+            // Sync the remote service first (if one is active) — it may
+            // add/adopt sources — then RSS-fetch only the local-only sources.
+            // Remote sources pull their items through the service, so they're
+            // excluded from refreshAll to avoid a double fetch. Read the source
+            // list fresh AFTER the sync so newly adopted sources are honored and
+            // a delete/rename mid-refresh can't blank a log row's name.
+            await syncServiceRef.current()
             if (cancelledRef.current) return
-            setRefreshStatus(formatRefreshSummary(results))
-            logs.appendRefreshResults(results, names, "manual")
+            const fresh = await sourcesApi.list()
+            if (cancelledRef.current) return
+            const names = new Map(fresh.map(s => [s.sid, s.name]))
+            const sids = fresh
+                .filter(s => s.serviceRef == null)
+                .map(s => s.sid)
+            if (sids.length > 0) {
+                const results = await refreshAll(sids)
+                if (cancelledRef.current) return
+                setRefreshStatus(formatRefreshSummary(results))
+                logs.appendRefreshResults(results, names, "manual")
+            }
+            // else: no local feeds — keep the service-sync status line.
             await loadItems()
         } catch (e) {
             if (cancelledRef.current) return
@@ -424,7 +448,7 @@ export function App(): React.ReactElement {
         } finally {
             if (!cancelledRef.current) setRefreshInFlight(false)
         }
-    }, [refreshInFlight, loadItems, sources, logs])
+    }, [refreshInFlight, loadItems, logs])
 
     const onSelectSource = React.useCallback((sid: number | null) => {
         setSelectedSourceId(sid)
@@ -663,6 +687,50 @@ export function App(): React.ReactElement {
         },
         [loadSourcesAndGroups, loadItems]
     )
+
+    // Sync the active Fever service if one is configured, guarded so overlapping
+    // calls (a background tick landing during a manual Refresh) don't pile up.
+    // Never rejects: callers (onRefresh, the background timer) treat sync as
+    // best-effort. onSyncService stays unguarded so the Settings modal's
+    // importGroups path is never skipped by this guard.
+    const syncServiceIfActive = React.useCallback(async () => {
+        if (serviceSyncInFlightRef.current) return
+        let cfg: ServiceConfigs
+        try {
+            cfg = await settings.get("serviceConfigs")
+        } catch {
+            return
+        }
+        const endpoint = isFeverActive(cfg)
+        if (!endpoint) return
+        serviceSyncInFlightRef.current = true
+        try {
+            await onSyncService(endpoint, false)
+        } catch (e) {
+            console.error("[App] auto service sync failed", e)
+        } finally {
+            serviceSyncInFlightRef.current = false
+        }
+    }, [onSyncService])
+
+    // Keep the ref pointing at the latest callback so onRefresh and the
+    // background timer can call it without depending on its identity.
+    React.useEffect(() => {
+        syncServiceRef.current = syncServiceIfActive
+    }, [syncServiceIfActive])
+
+    // Periodic background service sync, cadence = the RSS fetch interval. Own
+    // timer (not startAutoRefresh's) so switching source/filter — which changes
+    // loadItems' identity — never resets it. Paused while the window is hidden.
+    React.useEffect(() => {
+        const min = appSettings?.fetchInterval ?? 0
+        if (min <= 0) return
+        const h = window.setInterval(() => {
+            if (typeof document !== "undefined" && document.hidden) return
+            void syncServiceRef.current()
+        }, min * 60_000)
+        return () => window.clearInterval(h)
+    }, [appSettings?.fetchInterval])
 
     const onLink = React.useCallback((url: string) => {
         openExternal(url).catch(err => {

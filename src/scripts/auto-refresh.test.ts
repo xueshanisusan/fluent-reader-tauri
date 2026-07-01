@@ -54,6 +54,25 @@ describe("computeDueSources", () => {
         expect(computeDueSources(sources, now)).toEqual([])
     })
 
+    it("excludes remote (serviceRef != null) sources even if otherwise due", () => {
+        const now = 1_000_000_000
+        const sources = [
+            makeSource({
+                sid: 1,
+                serviceRef: "42",
+                fetchFrequency: 15,
+                lastFetchedMs: 0,
+            }),
+            makeSource({
+                sid: 2,
+                serviceRef: null,
+                fetchFrequency: 15,
+                lastFetchedMs: 0,
+            }),
+        ]
+        expect(computeDueSources(sources, now)).toEqual([2])
+    })
+
     it("includes sources with lastFetchedMs == 0 (never fetched)", () => {
         const now = 1_000_000_000
         const sources = [

@@ -15,10 +15,13 @@ export interface AutoRefreshOptions {
 }
 
 // fetchFrequency is minutes (0 = disabled). spike:// URLs are demo seeds and
-// have no real feed behind them, so they never qualify.
+// have no real feed behind them, so they never qualify. Remote sources
+// (serviceRef != null) pull their items through the sync service, never via
+// RSS refresh — excluding them here avoids a double fetch.
 export function computeDueSources(sources: Source[], nowMs: number): number[] {
   const out: number[] = [];
   for (const s of sources) {
+    if (s.serviceRef != null) continue;
     if (s.fetchFrequency <= 0) continue;
     if (s.url.startsWith("spike://")) continue;
     if (nowMs - s.lastFetchedMs >= s.fetchFrequency * 60_000) {
