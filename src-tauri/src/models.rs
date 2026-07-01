@@ -90,6 +90,10 @@ pub struct NewItem {
     pub creator: Option<String>,
     #[serde(default)]
     pub guid: Option<String>,
+    // Remote service item id (Fever etc.), mirrored to items.service_ref. None
+    // for plain RSS-ingested items.
+    #[serde(default)]
+    pub service_ref: Option<String>,
     #[serde(default)]
     pub has_read: bool,
     #[serde(default)]

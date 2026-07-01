@@ -217,13 +217,9 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                 const cfg = all.serviceConfigs as FeverConfigs
                 const importGroups =
                     forceImportGroups || Boolean(cfg.importGroups)
+                // onSyncService owns persisting the advanced cursor and clearing
+                // the one-time importGroups flag (single serviceConfigs write).
                 const status = await onSyncService(endpoint, importGroups)
-                if (importGroups && cfg.type === SyncService.Fever) {
-                    // One-time flag: clear it so later syncs keep local grouping.
-                    const rest = { ...cfg }
-                    delete rest.importGroups
-                    await settings.set("serviceConfigs", rest)
-                }
                 setSvcStatus(status)
             } catch (e) {
                 setSvcStatus("Sync failed: " + describeSyncError(e))

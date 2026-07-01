@@ -1,8 +1,8 @@
 use fluent_reader_lib::db;
-use fluent_reader_lib::models::{NewItem, NewSource};
+use fluent_reader_lib::models::{NewItem, NewRule, NewSource};
 use fluent_reader_lib::repo;
-use fluent_reader_lib::service::{reconcile_sources, GroupImport, SyncResult};
-use fluent_reader_lib::service::fever::{FeedGroup, RemoteFeed, RemoteGroup};
+use fluent_reader_lib::service::{ingest_items, reconcile_sources, GroupImport, SyncResult};
+use fluent_reader_lib::service::fever::{FeedGroup, FeverItem, RemoteFeed, RemoteGroup};
 
 async fn make_local(pool: &sqlx::SqlitePool, url: &str, name: &str) -> i64 {
     repo::sources::create(
@@ -51,6 +51,7 @@ async fn reconcile_creates_new_remote_sources() {
         adopted,
         removed,
         grouped,
+        ..
     } = reconcile_sources(&pool, &remote, None).await.unwrap();
     assert_eq!((added, adopted, removed, grouped), (2, 0, 0, 0));
 
@@ -216,4 +217,128 @@ async fn reconcile_imports_groups_and_assigns_sources() {
         None,
         "ungrouped feed stays ungrouped"
     );
+}
+
+fn fitem(id: i64, feed_id: i64, url: &str, title: &str, html: &str) -> FeverItem {
+    FeverItem {
+        id,
+        feed_id,
+        title: title.into(),
+        url: url.into(),
+        html: html.into(),
+        author: String::new(),
+        created_on_time: 1_700_000_000,
+        is_read: false,
+        is_saved: false,
+    }
+}
+
+#[tokio::test]
+async fn ingest_maps_items_to_source_by_service_ref() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+
+    let mut it = fitem(100, 10, "https://a.example/1", "Hi", "<p>Hello <b>world</b></p>");
+    it.is_read = true;
+    it.is_saved = true;
+    let fetched = ingest_items(&pool, &[it]).await.unwrap();
+    assert_eq!(fetched, 1);
+
+    let items = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        .await
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    let item = &items[0];
+    assert_eq!(item.source_id, sid);
+    assert_eq!(item.service_ref.as_deref(), Some("100"));
+    assert_eq!(item.link, "https://a.example/1");
+    assert_eq!(item.date_ms, 1_700_000_000 * 1000);
+    assert!(item.has_read, "is_read maps to has_read");
+    assert!(item.starred, "is_saved maps to starred");
+    assert_eq!(item.snippet, "Hello world", "snippet is stripped HTML text");
+}
+
+#[tokio::test]
+async fn ingest_skips_items_for_unknown_feed() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+
+    // feed_id 99 has no matching local source → dropped.
+    let fetched = ingest_items(&pool, &[fitem(1, 99, "https://x/1", "X", "x")])
+        .await
+        .unwrap();
+    assert_eq!(fetched, 0);
+    assert_eq!(
+        repo::items::list(&pool, None, None, None, false, 100, 0)
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn ingest_dedups_on_link() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+
+    let it = fitem(100, 10, "https://a.example/1", "Hi", "body");
+    assert_eq!(ingest_items(&pool, &[it.clone()]).await.unwrap(), 1);
+    // Same (source_id, link) on a second pull → dedup-skipped.
+    assert_eq!(ingest_items(&pool, &[it]).await.unwrap(), 0);
+    assert_eq!(
+        repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn ingest_applies_source_rules() {
+    let pool = db::open_memory().await.unwrap();
+    let sid = make_local(&pool, "https://a.example/feed", "A").await;
+    set_ref(&pool, sid, "10").await;
+    // Rule: title contains "urgent" → mark read.
+    repo::rules::create(
+        &pool,
+        NewRule {
+            source_id: sid,
+            position: 0,
+            filter_type_mask: 1, // MASK_TITLE
+            filter_search: "urgent".into(),
+            filter_match: true,
+            action_read: Some(1),
+            action_star: None,
+            action_hide: None,
+            action_notify: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let items = vec![
+        fitem(100, 10, "https://a.example/1", "Urgent notice", "x"),
+        fitem(101, 10, "https://a.example/2", "Just chatting", "x"),
+    ];
+    assert_eq!(ingest_items(&pool, &items).await.unwrap(), 2);
+
+    let urgent = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|i| i.title == "Urgent notice")
+        .unwrap();
+    assert!(urgent.has_read, "rule marked the matching item read");
+    let chat = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|i| i.title == "Just chatting")
+        .unwrap();
+    assert!(!chat.has_read, "non-matching item untouched");
 }

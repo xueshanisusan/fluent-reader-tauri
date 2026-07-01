@@ -647,8 +647,8 @@ pub mod items {
             let res = sqlx::query(
                 "INSERT OR IGNORE INTO items \
                     (source_id, title, link, date_ms, fetched_date_ms, thumb, content, snippet, creator, guid, \
-                     has_read, starred, hidden, notify) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     has_read, starred, hidden, notify, service_ref) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(it.source_id)
             .bind(&it.title)
@@ -664,6 +664,7 @@ pub mod items {
             .bind(it.starred)
             .bind(it.hidden)
             .bind(it.notify)
+            .bind(&it.service_ref)
             .execute(&mut *tx)
             .await?;
             let was_inserted = res.rows_affected() == 1;
