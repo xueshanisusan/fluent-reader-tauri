@@ -106,6 +106,9 @@ export interface UnreadCount {
 
 export interface ItemListFilter {
   sourceId?: number;
+  // Restrict to sources in this group (a whole-group feed). Mutually exclusive
+  // with sourceId in practice; the backend ANDs whichever is provided.
+  groupId?: number;
   hasRead?: boolean;
   starred?: boolean;
   // false (default) → normal views; true → the Hidden bin (only hidden items).
@@ -117,6 +120,7 @@ export interface ItemListFilter {
 export interface ItemSearchFilter {
   query: string;
   sourceId?: number;
+  groupId?: number;
   hasRead?: boolean;
   starred?: boolean;
   hidden?: boolean;
@@ -177,6 +181,7 @@ export const items = {
   list: (filter: ItemListFilter = {}) =>
     invoke<Item[]>("items_list", {
       sourceId: filter.sourceId ?? null,
+      groupId: filter.groupId ?? null,
       hasRead: filter.hasRead ?? null,
       starred: filter.starred ?? null,
       hidden: filter.hidden ?? false,
@@ -187,6 +192,7 @@ export const items = {
     invoke<Item[]>("items_search", {
       query: filter.query,
       sourceId: filter.sourceId ?? null,
+      groupId: filter.groupId ?? null,
       hasRead: filter.hasRead ?? null,
       starred: filter.starred ?? null,
       hidden: filter.hidden ?? false,

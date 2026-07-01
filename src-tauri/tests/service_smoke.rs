@@ -81,7 +81,7 @@ async fn reconcile_adopts_url_matching_local_source_and_wipes_items() {
     .await
     .unwrap();
     assert_eq!(
-        repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
             .await
             .unwrap()
             .len(),
@@ -98,7 +98,7 @@ async fn reconcile_adopts_url_matching_local_source_and_wipes_items() {
     assert_eq!(sources[0].sid, sid, "adopted in place, not recreated");
     assert_eq!(sources[0].service_ref.as_deref(), Some("42"));
     assert_eq!(
-        repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
             .await
             .unwrap()
             .len(),
@@ -129,7 +129,7 @@ async fn reconcile_reuses_already_mapped_source_untouched() {
     let res = reconcile_sources(&pool, &remote, None).await.unwrap();
     assert_eq!((res.added, res.adopted, res.removed), (0, 0, 0));
     assert_eq!(
-        repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
             .await
             .unwrap()
             .len(),
@@ -248,7 +248,7 @@ async fn ingest_maps_items_to_source_by_service_ref() {
     let fetched = ingest_items(&pool, &[it]).await.unwrap();
     assert_eq!(fetched, 1);
 
-    let items = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+    let items = repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
@@ -274,7 +274,7 @@ async fn ingest_skips_items_for_unknown_feed() {
         .unwrap();
     assert_eq!(fetched, 0);
     assert_eq!(
-        repo::items::list(&pool, None, None, None, false, 100, 0)
+        repo::items::list(&pool, None, None, None, None, false, 100, 0)
             .await
             .unwrap()
             .len(),
@@ -293,7 +293,7 @@ async fn ingest_dedups_on_link() {
     // Same (source_id, link) on a second pull → dedup-skipped.
     assert_eq!(ingest_items(&pool, &[it]).await.unwrap(), 0);
     assert_eq!(
-        repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+        repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
             .await
             .unwrap()
             .len(),
@@ -330,14 +330,14 @@ async fn ingest_applies_source_rules() {
     ];
     assert_eq!(ingest_items(&pool, &items).await.unwrap(), 2);
 
-    let urgent = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+    let urgent = repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
         .await
         .unwrap()
         .into_iter()
         .find(|i| i.title == "Urgent notice")
         .unwrap();
     assert!(urgent.has_read, "rule marked the matching item read");
-    let chat = repo::items::list(&pool, Some(sid), None, None, false, 100, 0)
+    let chat = repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
         .await
         .unwrap()
         .into_iter()
@@ -360,7 +360,7 @@ async fn seed_item(pool: &sqlx::SqlitePool, id: i64, feed_id: i64, read: bool, s
 }
 
 async fn item_by_ref(pool: &sqlx::SqlitePool, service_ref: &str) -> (bool, bool) {
-    let items = repo::items::list(pool, None, None, None, false, 100, 0)
+    let items = repo::items::list(pool, None, None, None, None, false, 100, 0)
         .await
         .unwrap();
     let it = items

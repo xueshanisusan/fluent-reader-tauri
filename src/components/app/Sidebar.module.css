@@ -116,6 +116,7 @@
     gap: 6px;
     padding: 6px 12px;
     cursor: pointer;
+    border-left: 3px solid transparent;
     user-select: none;
     font-weight: 600;
     color: var(--text-sidebar);
@@ -123,6 +124,11 @@
 
 .groupHeader:hover {
     background: var(--bg-sidebar-hover);
+}
+
+.groupHeader.active {
+    background: var(--bg-sidebar-active);
+    border-left-color: var(--accent-sidebar);
 }
 
 .groupCaret {
