@@ -485,6 +485,30 @@ pub mod items {
         q.bind(limit).bind(offset).fetch_all(pool).await
     }
 
+    // Fetch items by an explicit set of iids (the frozen daily-digest list).
+    // The row order is NOT constrained — SQLite returns `IN (...)` matches in
+    // arbitrary order — so the caller reorders by its stored iid sequence. Rows
+    // for iids that no longer exist (e.g. a deleted source) are simply absent.
+    pub async fn list_by_ids(pool: &SqlitePool, ids: &[i64]) -> sqlx::Result<Vec<Item>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT iid, source_id, title, link, date_ms, fetched_date_ms, thumb, content, \
+                    snippet, creator, has_read, starred, hidden, notify, service_ref, guid \
+             FROM items WHERE iid IN ({placeholders})"
+        );
+        let mut q = sqlx::query_as::<_, Item>(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(pool).await
+    }
+
     pub async fn search(
         pool: &SqlitePool,
         query: &str,

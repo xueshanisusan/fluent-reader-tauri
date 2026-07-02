@@ -174,6 +174,12 @@ pub enum HideError {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DigestError {
+    Db { message: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackfillSummary {
     pub scanned: u64,

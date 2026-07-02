@@ -31,6 +31,8 @@ import { Sidebar } from "./app/Sidebar"
 import { RulesModal } from "./app/RulesModal"
 import { SettingsModal } from "./app/SettingsModal"
 import { useArticleList } from "./app/useArticleList"
+import { useDigest } from "./app/useDigest"
+import { DigestView } from "./app/DigestView"
 import {
     settings,
     isFeverActive,
@@ -82,12 +84,14 @@ function formatRefreshSummary(results: RefreshResult[]): string {
     return out
 }
 
-// What the sidebar has selected: everything, one source, or a whole group.
-// A group resolves (in the backend) to all its member sources' items.
+// What the sidebar has selected: everything, one source, a whole group, or the
+// daily digest. A group resolves (in the backend) to all its member sources'
+// items; the digest is a separate frozen feed (see useDigest).
 type Selection =
     | { kind: "all" }
     | { kind: "source"; sid: number }
     | { kind: "group"; gid: number }
+    | { kind: "digest" }
 
 export function App(): React.ReactElement {
     const [sources, setSources] = React.useState<Source[]>([])
@@ -99,6 +103,7 @@ export function App(): React.ReactElement {
     const selectedSourceId =
         selection.kind === "source" ? selection.sid : null
     const selectedGroupId = selection.kind === "group" ? selection.gid : null
+    const digestActive = selection.kind === "digest"
     const [searchInput, setSearchInput] = React.useState("")
     const [searchQuery, setSearchQuery] = React.useState("")
 
@@ -185,6 +190,16 @@ export function App(): React.ReactElement {
         onSelectNeighbor,
         onOpenSelectedLink,
     } = list
+
+    // The daily digest: a frozen, curated pick from unread, its own feed. Only
+    // builds/loads while its sidebar entry is active. Reading in it refreshes
+    // the sidebar unread badges via reloadUnreadCounts.
+    const digest = useDigest({
+        active: digestActive,
+        sources,
+        pushItemMark,
+        onAfterMutate: reloadUnreadCounts,
+    })
 
     // Right-click context menu for a feed item (null = closed).
     const [itemMenu, setItemMenu] = React.useState<{
@@ -465,6 +480,10 @@ export function App(): React.ReactElement {
 
     const onSelectGroup = React.useCallback((gid: number) => {
         setSelection({ kind: "group", gid })
+    }, [])
+
+    const onSelectDigest = React.useCallback(() => {
+        setSelection({ kind: "digest" })
     }, [])
 
     const onChangeViewMode = React.useCallback(
@@ -766,6 +785,10 @@ export function App(): React.ReactElement {
 
     const handleShortcut = React.useCallback(
         (key: string): boolean => {
+            // The list shortcuts act on the article-list feed; in the digest
+            // view that feed is in the background, so ignore them to avoid
+            // mutating the wrong list. (Esc/close still work via the overlay.)
+            if (digestActive) return false
             switch (key) {
                 case "j":
                     onSelectNeighbor(1)
@@ -789,6 +812,7 @@ export function App(): React.ReactElement {
             return false
         },
         [
+            digestActive,
             onSelectNeighbor,
             onToggleRead,
             onToggleStar,
@@ -828,7 +852,13 @@ export function App(): React.ReactElement {
         []
     )
 
-    const hasUnread = !!items && items.some(i => !i.hasRead)
+    // In the digest view the article-list feed is in the background, so the
+    // NavBar reflects the digest's own progress and its mark-all-read is a
+    // no-op (it would otherwise mark the background feed).
+    const hasUnread = digestActive
+        ? digest.remaining > 0
+        : !!items && items.some(i => !i.hasRead)
+    const onMarkAllReadActive = digestActive ? async () => {} : onMarkAllRead
 
     return (
         <div className={layout.app}>
@@ -845,7 +875,7 @@ export function App(): React.ReactElement {
                         return next
                     })
                 }}
-                onMarkAllRead={onMarkAllRead}
+                onMarkAllRead={onMarkAllReadActive}
                 onRefresh={onRefresh}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onJumpToSource={onSelectSource}
@@ -878,6 +908,7 @@ export function App(): React.ReactElement {
                 open={settingsOpen}
                 opmlBusy={opmlBusy}
                 backfillBusy={backfillBusy}
+                groups={groups}
                 onClose={() => setSettingsOpen(false)}
                 onChanged={setAppSettings}
                 onImportOpml={onImportOpml}
@@ -913,9 +944,11 @@ export function App(): React.ReactElement {
                         unreadCounts={unreadCounts}
                         selectedSourceId={selectedSourceId}
                         selectedGroupId={selectedGroupId}
+                        digestActive={digestActive}
                         expandedGroups={expandedGroups}
                         onSelectSource={onSelectSource}
                         onSelectGroup={onSelectGroup}
+                        onSelectDigest={onSelectDigest}
                         onToggleGroup={onToggleGroup}
                         onRenameSource={onRenameSource}
                         onEditRules={setRulesModalSid}
@@ -930,6 +963,25 @@ export function App(): React.ReactElement {
     )
 
     function renderBody(): React.ReactElement {
+        // The digest is its own frozen feed with its own loading/empty states.
+        if (selection.kind === "digest") {
+            const digestEscEnabled =
+                !settingsOpen &&
+                !subscribeOpen &&
+                rulesModalSid === null &&
+                !searchBarVisible
+            return (
+                <DigestView
+                    digest={digest}
+                    viewMode={appSettings?.view ?? ViewType.Cards}
+                    sourceMeta={sourceMeta}
+                    hostStyle={hostStyle}
+                    remount={remount}
+                    escEnabled={digestEscEnabled}
+                    onCtxMenu={onCtxMenu}
+                />
+            )
+        }
         if (listError) {
             return (
                 <div className={`${layout.centered} ${layout.error}`}>

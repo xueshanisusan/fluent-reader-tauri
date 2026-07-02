@@ -1,0 +1,40 @@
+.header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+}
+
+.title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.regen {
+    padding: 3px 12px;
+    font-size: 12px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-app);
+    color: var(--text-primary);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.regen:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+.regen:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

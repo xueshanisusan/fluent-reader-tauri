@@ -66,6 +66,28 @@ export interface FeverConfigs extends ServiceConfigs {
   useInt32?: boolean;
 }
 
+// The frozen daily-digest snapshot: the picked iids for a given local date.
+// Regenerated when `date` no longer matches today. null = never generated.
+export interface DigestSnapshot {
+  date: string;
+  iids: number[];
+}
+
+// Tunables for the digest selection algorithm.
+export interface DigestConfig {
+  // Total number of articles in the digest.
+  size: number;
+  // Minimum picked per group before weighted fill (coverage guarantee).
+  base: number;
+  // Max articles from any single source (diversity cap).
+  perSource: number;
+}
+
+// Per-group weight for the digest (gid → weight). A missing group defaults to
+// weight 1; weight <= 0 mutes the group entirely. Ungrouped sources share the
+// sentinel key 0.
+export type DigestWeights = Record<number, number>;
+
 export interface SettingsShape {
   theme: ThemeSettings;
   pac: string;
@@ -82,7 +104,16 @@ export interface SettingsShape {
   listViewConfigs: ViewConfigs;
   menuUnreadSourcesOnly: boolean;
   notificationsEnabled: boolean;
+  dailyDigest: DigestSnapshot | null;
+  digestWeights: DigestWeights;
+  digestConfig: DigestConfig;
 }
+
+export const DIGEST_CONFIG_DEFAULT: DigestConfig = {
+  size: 20,
+  base: 2,
+  perSource: 2,
+};
 
 const DEFAULTS: SettingsShape = {
   theme: ThemeSettings.Default,
@@ -100,6 +131,9 @@ const DEFAULTS: SettingsShape = {
   listViewConfigs: ViewConfigs.ShowCover,
   menuUnreadSourcesOnly: false,
   notificationsEnabled: true,
+  dailyDigest: null,
+  digestWeights: {},
+  digestConfig: DIGEST_CONFIG_DEFAULT,
 };
 
 // Returns the trimmed Fever endpoint iff a Fever service is configured with a
@@ -136,7 +170,14 @@ export const settings = {
 
   async getAll(): Promise<SettingsShape> {
     const s = await getStore();
-    const out: SettingsShape = { ...DEFAULTS, serviceConfigs: { ...DEFAULTS.serviceConfigs } };
+    // Deep-clone the object-valued defaults so callers can't mutate DEFAULTS
+    // through the returned object (scalars copy by value via the spread).
+    const out: SettingsShape = {
+      ...DEFAULTS,
+      serviceConfigs: { ...DEFAULTS.serviceConfigs },
+      digestWeights: { ...DEFAULTS.digestWeights },
+      digestConfig: { ...DEFAULTS.digestConfig },
+    };
     for (const k of Object.keys(DEFAULTS) as (keyof SettingsShape)[]) {
       const v = await s.get(k);
       if (v !== undefined && v !== null) (out[k] as unknown) = v;

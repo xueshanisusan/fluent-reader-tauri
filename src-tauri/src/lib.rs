@@ -48,6 +48,7 @@ pub fn run() {
             commands::rules_update,
             commands::rules_delete,
             commands::items_list,
+            commands::items_by_ids,
             commands::items_insert,
             commands::items_mark_read,
             commands::items_set_starred,
