@@ -4,10 +4,12 @@ import {
     ThemeSettings,
     SyncService,
     DIGEST_CONFIG_DEFAULT,
+    TRANSLATION_CONFIG_DEFAULT,
     type SettingsShape,
     type FeverConfigs,
     type DigestConfig,
     type DigestWeights,
+    type TranslationConfig,
 } from "../../scripts/settings-bridge"
 import type { Group } from "../../scripts/db-bridge"
 import { UNGROUPED_BUCKET } from "../../scripts/digest"
@@ -39,7 +41,13 @@ type Draft = Pick<
     "theme" | "fontSize" | "fontFamily" | "fetchInterval" | "notificationsEnabled"
 >
 
-type Tab = "application" | "subscriptions" | "services" | "digest" | "about"
+type Tab =
+    | "application"
+    | "subscriptions"
+    | "services"
+    | "digest"
+    | "translation"
+    | "about"
 
 // Local editing state for the Services (sync) tab. Password is never prefilled
 // from storage — the api_key lives in the OS keychain, not the settings store.
@@ -63,6 +71,7 @@ const PIVOT_ITEMS: Array<{ value: Tab; label: string }> = [
     { value: "subscriptions", label: "Subscriptions" },
     { value: "services", label: "Services" },
     { value: "digest", label: "Digest" },
+    { value: "translation", label: "Translation" },
     { value: "about", label: "About" },
 ]
 
@@ -102,6 +111,10 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         DIGEST_CONFIG_DEFAULT
     )
     const [digestWeights, setDigestWeights] = React.useState<DigestWeights>({})
+    // Translation tab: provider config, persisted immediately on change.
+    const [translationCfg, setTranslationCfg] = React.useState<TranslationConfig>(
+        TRANSLATION_CONFIG_DEFAULT
+    )
 
     React.useEffect(() => {
         if (!open) {
@@ -145,6 +158,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                 }
                 setDigestCfg(all.digestConfig)
                 setDigestWeights(all.digestWeights)
+                setTranslationCfg(all.translationConfig)
             } catch (e) {
                 if (cancelled) return
                 setError("Load failed: " + String((e as Error)?.message ?? e))
@@ -176,6 +190,24 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     .catch(e =>
                         console.error(
                             "[Settings] persist digestWeights failed",
+                            e
+                        )
+                    )
+                return next
+            })
+        },
+        []
+    )
+
+    const updateTranslation = React.useCallback(
+        (patch: Partial<TranslationConfig>) => {
+            setTranslationCfg(prev => {
+                const next = { ...prev, ...patch }
+                void settings
+                    .set("translationConfig", next)
+                    .catch(e =>
+                        console.error(
+                            "[Settings] persist translationConfig failed",
                             e
                         )
                     )
@@ -839,6 +871,86 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                         />
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    ) : tab === "translation" ? (
+                        <div className={styles.section}>
+                            <div className={styles.field}>
+                                <label className={styles.radio}>
+                                    <input
+                                        type="checkbox"
+                                        checked={translationCfg.enabled}
+                                        onChange={e =>
+                                            updateTranslation({
+                                                enabled: e.target.checked,
+                                            })
+                                        }
+                                    />
+                                    Enable article translation
+                                </label>
+                                <span className={styles.hint}>
+                                    Adds a Translate button to the article view.
+                                    Uses a local OpenAI-compatible server (e.g.
+                                    Ollama) — nothing leaves your machine.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>Endpoint</label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    placeholder="http://localhost:11434/v1"
+                                    value={translationCfg.endpoint}
+                                    onChange={e =>
+                                        updateTranslation({
+                                            endpoint: e.target.value,
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Base URL of the OpenAI-compatible API (Ollama
+                                    defaults to <code>http://localhost:11434/v1</code>).
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>Model</label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    placeholder="e.g. a local translation model"
+                                    value={translationCfg.model}
+                                    onChange={e =>
+                                        updateTranslation({
+                                            model: e.target.value,
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Model name served by the endpoint (Ollama:
+                                    the pulled model's tag).
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Target language
+                                </label>
+                                <input
+                                    type="text"
+                                    className={styles.input}
+                                    placeholder="e.g. 简体中文 / English"
+                                    value={translationCfg.targetLang}
+                                    onChange={e =>
+                                        updateTranslation({
+                                            targetLang: e.target.value,
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    The language to translate articles into.
+                                </span>
                             </div>
                         </div>
                     ) : tab === "about" ? (

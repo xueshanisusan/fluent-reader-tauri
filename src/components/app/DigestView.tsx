@@ -1,6 +1,10 @@
 import * as React from "react"
 import type { HostStyle } from "../article/iframe-bootstrap"
-import { ViewType, ViewConfigs } from "../../scripts/settings-bridge"
+import {
+    ViewType,
+    ViewConfigs,
+    type TranslationConfig,
+} from "../../scripts/settings-bridge"
 import { ItemList, type SourceMeta } from "./ItemList"
 import { ArticleOverlay } from "./ArticleOverlay"
 import { openDigestLink, type UseDigest } from "./useDigest"
@@ -20,6 +24,7 @@ export interface DigestViewProps {
         text: string | null
         href: string | null
     }) => void
+    translationConfig?: TranslationConfig
 }
 
 function statusText(d: UseDigest): string {
@@ -31,8 +36,16 @@ function statusText(d: UseDigest): string {
 }
 
 export function DigestView(props: DigestViewProps): React.ReactElement {
-    const { digest, viewMode, sourceMeta, hostStyle, remount, escEnabled, onCtxMenu } =
-        props
+    const {
+        digest,
+        viewMode,
+        sourceMeta,
+        hostStyle,
+        remount,
+        escEnabled,
+        onCtxMenu,
+        translationConfig,
+    } = props
     const { items, selectedItem } = digest
 
     return (
@@ -88,6 +101,7 @@ export function DigestView(props: DigestViewProps): React.ReactElement {
                     onLink={openDigestLink}
                     onKey={() => {}}
                     onCtxMenu={onCtxMenu}
+                    translationConfig={translationConfig}
                 />
             )}
         </div>

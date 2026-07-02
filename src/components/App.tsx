@@ -979,6 +979,7 @@ export function App(): React.ReactElement {
                     remount={remount}
                     escEnabled={digestEscEnabled}
                     onCtxMenu={onCtxMenu}
+                    translationConfig={appSettings?.translationConfig}
                 />
             )
         }
@@ -1062,6 +1063,7 @@ export function App(): React.ReactElement {
                         onLink={onLink}
                         onKey={onArticleKey}
                         onCtxMenu={onCtxMenu}
+                        translationConfig={appSettings?.translationConfig}
                     />
                 )}
                 {itemMenu && (
