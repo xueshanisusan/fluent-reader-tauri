@@ -9,6 +9,7 @@ pub mod repo;
 pub mod rules;
 pub mod search;
 pub mod service;
+pub mod translate;
 
 use commands::AppState;
 use tauri::Manager;
@@ -66,6 +67,7 @@ pub fn run() {
             service::service_sync,
             service::service_mark,
             service::service_mark_feed_read,
+            translate::translate_segments,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

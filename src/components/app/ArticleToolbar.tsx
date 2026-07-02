@@ -11,6 +11,13 @@ export interface ArticleToolbarProps {
     onToggleHidden: () => void
     onOpenInBrowser: () => void
     onClose?: () => void
+    // Translation (shown only when a translation provider is enabled). translated
+    // = currently showing the translated text; translating = a request is in
+    // flight (button disabled + spinner).
+    translateEnabled?: boolean
+    translating?: boolean
+    translated?: boolean
+    onToggleTranslate?: () => void
 }
 
 // Header for the article overlay, matching the original Fluent Reader: source
@@ -28,6 +35,10 @@ export function ArticleToolbar(
         onToggleHidden,
         onOpenInBrowser,
         onClose,
+        translateEnabled,
+        translating,
+        translated,
+        onToggleTranslate,
     } = props
     const [iconOk, setIconOk] = React.useState(true)
 
@@ -74,6 +85,22 @@ export function ArticleToolbar(
                 title={item.hidden ? "Unhide" : "Hide"}>
                 {item.hidden ? <EyeIcon /> : <EyeOffIcon />}
             </button>
+            {translateEnabled && (
+                <button
+                    className={`${styles.iconBtn} ${translated ? styles.starredOn : ""}`}
+                    onClick={onToggleTranslate}
+                    disabled={translating}
+                    aria-label={translated ? "Show original" : "Translate"}
+                    title={
+                        translating
+                            ? "Translating…"
+                            : translated
+                              ? "Show original"
+                              : "Translate"
+                    }>
+                    {translating ? <SpinnerIcon /> : <TranslateIcon />}
+                </button>
+            )}
             <button
                 className={styles.iconBtn}
                 onClick={onOpenInBrowser}
@@ -82,6 +109,40 @@ export function ArticleToolbar(
                 <GlobeIcon />
             </button>
         </div>
+    )
+}
+
+function TranslateIcon(): React.ReactElement {
+    return (
+        <svg width="15" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <text
+                x="0.5"
+                y="8"
+                fontSize="8"
+                fontFamily="sans-serif"
+                fill="currentColor">
+                A
+            </text>
+            <text x="7" y="15" fontSize="8" fill="currentColor">
+                文
+            </text>
+        </svg>
+    )
+}
+
+function SpinnerIcon(): React.ReactElement {
+    return (
+        <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            className={styles.spin}
+            aria-hidden="true">
+            <path d="M8 2a6 6 0 1 1-6 6" strokeLinecap="round" />
+        </svg>
     )
 }
 

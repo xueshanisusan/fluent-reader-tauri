@@ -107,12 +107,39 @@ export interface SettingsShape {
   dailyDigest: DigestSnapshot | null;
   digestWeights: DigestWeights;
   digestConfig: DigestConfig;
+  translationConfig: TranslationConfig;
 }
 
 export const DIGEST_CONFIG_DEFAULT: DigestConfig = {
   size: 20,
   base: 2,
   perSource: 2,
+};
+
+// Which translation backend to use. Pluggable; only the local OpenAI-compatible
+// provider (Ollama etc.) ships in the MVP.
+export const enum TranslateProvider {
+  LocalOpenAI = "localOpenai",
+}
+
+export interface TranslationConfig {
+  // Off by default (dark launch) — the Translate button only appears when on.
+  enabled: boolean;
+  provider: TranslateProvider;
+  // Base URL of an OpenAI-compatible server, e.g. Ollama's http://localhost:11434/v1.
+  endpoint: string;
+  // Model name served by that endpoint, e.g. a local MiniCPM.
+  model: string;
+  // Free-text target language name, e.g. "简体中文" / "English". Empty = unset.
+  targetLang: string;
+}
+
+export const TRANSLATION_CONFIG_DEFAULT: TranslationConfig = {
+  enabled: false,
+  provider: TranslateProvider.LocalOpenAI,
+  endpoint: "http://localhost:11434/v1",
+  model: "",
+  targetLang: "",
 };
 
 const DEFAULTS: SettingsShape = {
@@ -134,6 +161,7 @@ const DEFAULTS: SettingsShape = {
   dailyDigest: null,
   digestWeights: {},
   digestConfig: DIGEST_CONFIG_DEFAULT,
+  translationConfig: TRANSLATION_CONFIG_DEFAULT,
 };
 
 // Returns the trimmed Fever endpoint iff a Fever service is configured with a
@@ -177,6 +205,7 @@ export const settings = {
       serviceConfigs: { ...DEFAULTS.serviceConfigs },
       digestWeights: { ...DEFAULTS.digestWeights },
       digestConfig: { ...DEFAULTS.digestConfig },
+      translationConfig: { ...DEFAULTS.translationConfig },
     };
     for (const k of Object.keys(DEFAULTS) as (keyof SettingsShape)[]) {
       const v = await s.get(k);

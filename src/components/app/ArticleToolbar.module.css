@@ -10,6 +10,17 @@
     flex-shrink: 0;
 }
 
+.spin {
+    transform-origin: center;
+    animation: toolbar-spin 0.8s linear infinite;
+}
+
+@keyframes toolbar-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .source {
     flex: 1;
     display: flex;

@@ -180,6 +180,19 @@ pub enum DigestError {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TranslationError {
+    // Transport-level failure (server unreachable / timeout / non-2xx). Surfaced
+    // to the user — the article stays untranslated. Distinct from content
+    // failures, which fall back to keeping the original text per segment.
+    Network { message: String },
+    // The provider replied but we couldn't parse a usable translation out of it.
+    Parse { message: String },
+    // Missing/invalid config (no endpoint, model, or target language).
+    Config { message: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackfillSummary {
     pub scanned: u64,
