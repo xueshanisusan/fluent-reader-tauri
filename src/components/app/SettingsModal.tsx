@@ -3,9 +3,14 @@ import {
     settings,
     ThemeSettings,
     SyncService,
+    DIGEST_CONFIG_DEFAULT,
     type SettingsShape,
     type FeverConfigs,
+    type DigestConfig,
+    type DigestWeights,
 } from "../../scripts/settings-bridge"
+import type { Group } from "../../scripts/db-bridge"
+import { UNGROUPED_BUCKET } from "../../scripts/digest"
 import { service, describeSyncError } from "../../scripts/service-bridge"
 import { setTheme } from "../../scripts/theme"
 import { openExternal } from "../../scripts/shell-bridge"
@@ -16,6 +21,8 @@ export interface SettingsModalProps {
     open: boolean
     opmlBusy: boolean
     backfillBusy: boolean
+    // Groups drive the per-group weight controls in the Digest tab.
+    groups: Group[]
     onClose: () => void
     onChanged: (next: SettingsShape) => void
     onImportOpml: () => void
@@ -32,7 +39,7 @@ type Draft = Pick<
     "theme" | "fontSize" | "fontFamily" | "fetchInterval" | "notificationsEnabled"
 >
 
-type Tab = "application" | "subscriptions" | "services" | "about"
+type Tab = "application" | "subscriptions" | "services" | "digest" | "about"
 
 // Local editing state for the Services (sync) tab. Password is never prefilled
 // from storage — the api_key lives in the OS keychain, not the settings store.
@@ -55,6 +62,7 @@ const PIVOT_ITEMS: Array<{ value: Tab; label: string }> = [
     { value: "application", label: "Application" },
     { value: "subscriptions", label: "Subscriptions" },
     { value: "services", label: "Services" },
+    { value: "digest", label: "Digest" },
     { value: "about", label: "About" },
 ]
 
@@ -66,6 +74,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         open,
         opmlBusy,
         backfillBusy,
+        groups,
         onClose,
         onChanged,
         onImportOpml,
@@ -86,6 +95,13 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [svcConnected, setSvcConnected] = React.useState(false)
     const [svcBusy, setSvcBusy] = React.useState(false)
     const [svcStatus, setSvcStatus] = React.useState<string | null>(null)
+    // Digest tab: tunables + per-group weights, persisted immediately on change
+    // (they take effect on the next Regenerate / next day, since the digest is
+    // frozen). Loaded from the store when the modal opens.
+    const [digestCfg, setDigestCfg] = React.useState<DigestConfig>(
+        DIGEST_CONFIG_DEFAULT
+    )
+    const [digestWeights, setDigestWeights] = React.useState<DigestWeights>({})
 
     React.useEffect(() => {
         if (!open) {
@@ -127,6 +143,8 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     })
                     setSvcConnected(false)
                 }
+                setDigestCfg(all.digestConfig)
+                setDigestWeights(all.digestWeights)
             } catch (e) {
                 if (cancelled) return
                 setError("Load failed: " + String((e as Error)?.message ?? e))
@@ -136,6 +154,36 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             cancelled = true
         }
     }, [open])
+
+    const updateDigestCfg = React.useCallback((patch: Partial<DigestConfig>) => {
+        setDigestCfg(prev => {
+            const next = { ...prev, ...patch }
+            void settings
+                .set("digestConfig", next)
+                .catch(e =>
+                    console.error("[Settings] persist digestConfig failed", e)
+                )
+            return next
+        })
+    }, [])
+
+    const updateDigestWeight = React.useCallback(
+        (key: number, weight: number) => {
+            setDigestWeights(prev => {
+                const next = { ...prev, [key]: weight }
+                void settings
+                    .set("digestWeights", next)
+                    .catch(e =>
+                        console.error(
+                            "[Settings] persist digestWeights failed",
+                            e
+                        )
+                    )
+                return next
+            })
+        },
+        []
+    )
 
     const onServiceLogin = React.useCallback(async () => {
         const endpoint = svc.endpoint.trim()
@@ -641,6 +689,157 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                             {svcStatus && (
                                 <div className={styles.hint}>{svcStatus}</div>
                             )}
+                        </div>
+                    ) : tab === "digest" ? (
+                        <div className={styles.section}>
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Digest size
+                                </label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={100}
+                                    className={styles.numberInput}
+                                    value={digestCfg.size}
+                                    onChange={e =>
+                                        updateDigestCfg({
+                                            size: clamp(
+                                                Number(e.target.value) || 20,
+                                                1,
+                                                100
+                                            ),
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Total articles picked for the daily digest
+                                    (1–100).
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Per-group minimum
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={20}
+                                    className={styles.numberInput}
+                                    value={digestCfg.base}
+                                    onChange={e =>
+                                        updateDigestCfg({
+                                            base: clamp(
+                                                Number(e.target.value) || 0,
+                                                0,
+                                                20
+                                            ),
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Guaranteed picks per group before weighting,
+                                    so no followed group is missed.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Per-source cap
+                                </label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    className={styles.numberInput}
+                                    value={digestCfg.perSource}
+                                    onChange={e =>
+                                        updateDigestCfg({
+                                            perSource: clamp(
+                                                Number(e.target.value) || 1,
+                                                1,
+                                                20
+                                            ),
+                                        })
+                                    }
+                                />
+                                <span className={styles.hint}>
+                                    Max articles from any single feed, for
+                                    diversity.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>
+                                    Group weights
+                                </label>
+                                <span className={styles.hint}>
+                                    Higher weight = a larger share of the digest.
+                                    0 mutes a group. Changes apply on the next
+                                    Regenerate.
+                                </span>
+                                <div className={styles.weightList}>
+                                    {groups.map(g => (
+                                        <div
+                                            key={g.gid}
+                                            className={styles.weightRow}>
+                                            <span className={styles.weightName}>
+                                                {g.name}
+                                            </span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={99}
+                                                className={styles.numberInput}
+                                                value={
+                                                    digestWeights[g.gid] ?? 1
+                                                }
+                                                onChange={e =>
+                                                    updateDigestWeight(
+                                                        g.gid,
+                                                        clamp(
+                                                            Number(
+                                                                e.target.value
+                                                            ) || 0,
+                                                            0,
+                                                            99
+                                                        )
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    ))}
+                                    <div className={styles.weightRow}>
+                                        <span className={styles.weightName}>
+                                            Ungrouped
+                                        </span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={99}
+                                            className={styles.numberInput}
+                                            value={
+                                                digestWeights[
+                                                    UNGROUPED_BUCKET
+                                                ] ?? 1
+                                            }
+                                            onChange={e =>
+                                                updateDigestWeight(
+                                                    UNGROUPED_BUCKET,
+                                                    clamp(
+                                                        Number(
+                                                            e.target.value
+                                                        ) || 0,
+                                                        0,
+                                                        99
+                                                    )
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     ) : tab === "about" ? (
                         <div className={styles.section}>

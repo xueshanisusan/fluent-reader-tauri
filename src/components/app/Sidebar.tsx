@@ -11,9 +11,11 @@ export interface SidebarProps {
     unreadCounts: ReadonlyMap<number, number>
     selectedSourceId: number | null
     selectedGroupId: number | null
+    digestActive: boolean
     expandedGroups: ReadonlySet<number>
     onSelectSource: (sid: number | null) => void
     onSelectGroup: (gid: number) => void
+    onSelectDigest: () => void
     onToggleGroup: (gid: number, expanded: boolean) => void
     onRenameSource: (sid: number, name: string) => void
     onEditRules: (sid: number) => void
@@ -35,9 +37,11 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
         unreadCounts,
         selectedSourceId,
         selectedGroupId,
+        digestActive,
         expandedGroups,
         onSelectSource,
         onSelectGroup,
+        onSelectDigest,
         onToggleGroup,
         onRenameSource,
         onEditRules,
@@ -73,8 +77,14 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
         return n
     }
 
-    const allActive = selectedSourceId === null
+    // "All articles" is active only when nothing more specific is (a group,
+    // a source, or the digest all leave selectedSourceId null too).
+    const allActive =
+        selectedSourceId === null && selectedGroupId === null && !digestActive
     const allRowClass = allActive ? `${styles.row} ${styles.active}` : styles.row
+    const digestRowClass = digestActive
+        ? `${styles.row} ${styles.active}`
+        : styles.row
 
     const lookupSource = (sid: number): Source | undefined =>
         sources.find(s => s.sid === sid)
@@ -115,6 +125,13 @@ export function Sidebar(props: SidebarProps): React.ReactElement {
                 {totalUnread > 0 && (
                     <span className={styles.badge}>{totalUnread}</span>
                 )}
+            </div>
+
+            <div className={digestRowClass} onClick={onSelectDigest}>
+                <span className={styles.rowIcon}>
+                    <DigestIcon />
+                </span>
+                <span className={styles.label}>Daily digest</span>
             </div>
 
             <div className={styles.subsHeader}>
@@ -191,6 +208,17 @@ function SearchIcon(): React.ReactElement {
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
             <line x1="10.5" y1="10.5" x2="14" y2="14" strokeLinecap="round" />
+        </svg>
+    )
+}
+
+function DigestIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+            <path d="M3 2.5h7a1.5 1.5 0 0 1 1.5 1.5v9.5H4.5A1.5 1.5 0 0 1 3 12z" />
+            <line x1="5" y1="5.2" x2="9.5" y2="5.2" strokeLinecap="round" />
+            <line x1="5" y1="7.4" x2="9.5" y2="7.4" strokeLinecap="round" />
+            <line x1="5" y1="9.6" x2="7.5" y2="9.6" strokeLinecap="round" />
         </svg>
     )
 }

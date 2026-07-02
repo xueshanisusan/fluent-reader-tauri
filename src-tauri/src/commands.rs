@@ -184,6 +184,16 @@ pub async fn items_list(
 }
 
 #[tauri::command]
+pub async fn items_by_ids(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<Vec<Item>, DigestError> {
+    repo::items::list_by_ids(&state.pool, &ids)
+        .await
+        .map_err(|e| DigestError::Db { message: e.to_string() })
+}
+
+#[tauri::command]
 pub async fn items_insert(
     state: State<'_, AppState>,
     items: Vec<NewItem>,

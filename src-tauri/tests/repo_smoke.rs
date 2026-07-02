@@ -511,3 +511,38 @@ async fn items_filter_by_group() {
         .unwrap();
     assert!(none.is_empty(), "empty group shows nothing");
 }
+
+#[tokio::test]
+async fn items_by_ids_fetches_requested_and_tolerates_gaps() {
+    let pool = db::open_memory().await.expect("open in-memory db");
+    let sid = make_src(&pool, "https://x.example/feed", "X").await;
+    repo::items::insert_many(
+        &pool,
+        vec![
+            mk_item(sid, "one", "x", 100),
+            mk_item(sid, "two", "x", 200),
+            mk_item(sid, "three", "x", 300),
+        ],
+    )
+    .await
+    .unwrap();
+    let all = repo::items::list(&pool, Some(sid), None, None, None, false, 100, 0)
+        .await
+        .unwrap();
+    let one = all.iter().find(|i| i.title == "one").unwrap().iid;
+    let three = all.iter().find(|i| i.title == "three").unwrap().iid;
+
+    // empty input → empty output (no invalid `IN ()` SQL).
+    assert!(repo::items::list_by_ids(&pool, &[]).await.unwrap().is_empty());
+
+    // Requested iids come back; a non-existent iid is silently dropped. The row
+    // ORDER is engine-unspecified for a bare `IN (...)`, so we assert set
+    // membership only — reordering to the requested sequence is the caller's
+    // job (covered by reorderByIds in digest.test.ts).
+    let got = repo::items::list_by_ids(&pool, &[three, one, 999_999])
+        .await
+        .unwrap();
+    assert_eq!(got.len(), 2, "missing iid dropped, existing returned");
+    let ids: std::collections::HashSet<i64> = got.iter().map(|i| i.iid).collect();
+    assert!(ids.contains(&one) && ids.contains(&three));
+}

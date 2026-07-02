@@ -150,6 +150,33 @@
     width: 100px;
 }
 
+.weightList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.weightRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.weightName {
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.weightRow .numberInput {
+    width: 64px;
+    flex-shrink: 0;
+}
+
 .footer {
     display: flex;
     justify-content: flex-end;

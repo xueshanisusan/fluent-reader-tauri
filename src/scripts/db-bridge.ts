@@ -132,6 +132,8 @@ export type SearchError = { kind: "db"; message: string };
 
 export type HideError = { kind: "db"; message: string };
 
+export type DigestError = { kind: "db"; message: string };
+
 export interface BackfillSummary {
   scanned: number;
   updated: number;
@@ -199,6 +201,9 @@ export const items = {
       limit: filter.limit ?? 50,
       offset: filter.offset ?? 0,
     }),
+  // Fetch items by an explicit set of iids (the frozen daily digest). Backend
+  // returns matches in arbitrary order; callers reorder by their iid sequence.
+  byIds: (ids: number[]) => invoke<Item[]>("items_by_ids", { ids }),
   insert: (newItems: NewItem[]) =>
     invoke<number>("items_insert", { items: newItems }),
   markRead: (iid: number, hasRead: boolean) =>
