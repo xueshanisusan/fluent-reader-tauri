@@ -6,11 +6,11 @@ import { TranslateProvider } from "../../scripts/settings-bridge"
 import {
     translate,
     describeTranslationError,
-    type TranslateProgress,
 } from "../../scripts/translate-bridge"
 import { model } from "../../scripts/model-bridge"
 import { extractTextNodes } from "../../scripts/translate-dom"
-import { ArticleView } from "../article/ArticleView"
+import { sanitize } from "../../scripts/article-sanitize"
+import { ArticleView, type ArticleViewHandle } from "../article/ArticleView"
 import { ArticleToolbar } from "./ArticleToolbar"
 import { formatArticleDate } from "../../scripts/format"
 import styles from "./ArticleOverlay.module.css"
@@ -95,7 +95,11 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
     // Model cold-start (indeterminate) vs per-batch translation progress.
     const [translateStarting, setTranslateStarting] = React.useState(false)
     const [translateProgress, setTranslateProgress] =
-        React.useState<TranslateProgress | null>(null)
+        React.useState<{ done: number; total: number } | null>(null)
+    // Handle to patch translated blocks into the iframe in place; a session id
+    // to drop stale patches after toggle-off / article change.
+    const articleViewRef = React.useRef<ArticleViewHandle>(null)
+    const streamIdRef = React.useRef(0)
 
     // Live iid for the stale-result guard: this overlay instance is reused
     // across articles, so a translate call started for one article must not
@@ -111,6 +115,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
         setTranslatedHtml(null)
         setTranslateStarting(false)
         setTranslateProgress(null)
+        streamIdRef.current++ // invalidate any in-flight stream for the old article
     }, [item.iid])
 
     // Drive the determinate bar width imperatively (a dynamic width can't be a
@@ -131,7 +136,12 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
     const onToggleTranslate = React.useCallback(() => {
         if (!translationConfig?.enabled) return
         if (translated) {
-            setTranslated(false) // back to original
+            // Toggle off — or cancel an in-flight stream — back to original.
+            streamIdRef.current++ // drop any in-flight patches
+            setTranslated(false)
+            setTranslating(false)
+            setTranslateStarting(false)
+            setTranslateProgress(null)
             return
         }
         if (!targetLang) {
@@ -146,66 +156,75 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
             setTransError(null)
             return
         }
+
         const iid0 = item.iid
         const html0 = item.content
+        const myStream = ++streamIdRef.current
+        setTransError(null)
+
+        const extraction = extractTextNodes(html0)
+        if (extraction.texts.length === 0) {
+            setTranslatedHtml(html0)
+            setTranslated(true)
+            return
+        }
+        // Show the tagged original NOW (one reload); each block is patched in
+        // place as it finishes, so the reader can start immediately.
+        setTranslatedHtml(extraction.taggedHtml)
+        setTranslated(true)
         setTranslating(true)
         setTranslateStarting(true)
-        setTranslateProgress(null)
-        setTransError(null)
+        setTranslateProgress({ done: 0, total: extraction.texts.length })
+
+        const live = (): boolean =>
+            iidRef.current === iid0 && streamIdRef.current === myStream
+
         void (async () => {
             try {
-                const extraction = extractTextNodes(html0)
-                if (extraction.texts.length === 0) {
-                    if (iidRef.current === iid0) {
-                        setTranslatedHtml(html0)
-                        setTranslated(true)
-                    }
-                    return
-                }
-                // ManagedLocal: the app owns the runtime — start it (idempotent)
-                // and use its ephemeral endpoint instead of the stored one. The
-                // llama-server serves a single model, so the OpenAI `model` field
-                // is a placeholder. The (possibly slow) model load shows as the
-                // indeterminate "starting" phase.
+                // ManagedLocal: app owns the runtime — start it (idempotent) and
+                // use its ephemeral endpoint. The cold model load is the
+                // indeterminate "preparing" phase before the first block lands.
                 let endpoint = translationConfig.endpoint
                 let modelName = translationConfig.model
                 if (translationConfig.provider === TranslateProvider.ManagedLocal) {
                     endpoint = await model.runtimeStart()
-                    if (iidRef.current !== iid0) return // article changed while starting
+                    if (!live()) return
                     modelName = modelName || "local"
                 }
-                if (iidRef.current === iid0) {
-                    setTranslateStarting(false)
-                    setTranslateProgress({
-                        done: 0,
-                        total: extraction.texts.length,
-                    })
-                }
+                if (live()) setTranslateStarting(false)
+
                 const translations = await translate.segments(
                     endpoint,
                     modelName,
                     targetLang,
                     extraction.texts,
                     p => {
-                        if (iidRef.current === iid0) setTranslateProgress(p)
+                        if (!live()) return
+                        setTranslateProgress({ done: p.done, total: p.total })
+                        for (const it of p.items) {
+                            articleViewRef.current?.patchUnit(
+                                it.index,
+                                sanitize(extraction.buildUnit(it.index, it.text))
+                            )
+                        }
                     }
                 )
-                if (iidRef.current !== iid0) return // article changed — drop
-                if (translations.length !== extraction.texts.length) {
-                    setTransError("Translation failed (segment count mismatch).")
-                    return
+                // Cache the whole translation for an instant re-open; the iframe
+                // is already fully patched, so we DON'T swap the html (no reload).
+                if (
+                    iidRef.current === iid0 &&
+                    translations.length === extraction.texts.length
+                ) {
+                    cacheSet(key, extraction.build(translations))
                 }
-                const out = extraction.build(translations)
-                cacheSet(key, out)
-                setTranslatedHtml(out)
-                setTranslated(true)
             } catch (e) {
-                if (iidRef.current !== iid0) return
-                setTransError(
-                    "Translation failed: " + describeTranslationError(e)
-                )
+                if (live()) {
+                    setTransError(
+                        "Translation failed: " + describeTranslationError(e)
+                    )
+                }
             } finally {
-                if (iidRef.current === iid0) {
+                if (streamIdRef.current === myStream) {
                     setTranslating(false)
                     setTranslateStarting(false)
                     setTranslateProgress(null)
@@ -260,7 +279,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
                     translated={translated}
                     onToggleTranslate={onToggleTranslate}
                 />
-                {translating && (
+                {translating && translated && (
                     <div className={styles.transProgress}>
                         <div className={styles.transBarTrack}>
                             {translateStarting || !translateProgress ? (
@@ -274,7 +293,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
                         </div>
                         <span className={styles.transProgressLabel}>
                             {translateStarting || !translateProgress
-                                ? "Starting model…"
+                                ? "Preparing model (first time is slow)…"
                                 : `Translating ${translateProgress.done}/${translateProgress.total}`}
                         </span>
                     </div>
@@ -286,6 +305,7 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
                 )}
                 <div className={styles.viewport}>
                     <ArticleView
+                        ref={articleViewRef}
                         key={articleId}
                         html={displayHtml}
                         articleId={articleId}
