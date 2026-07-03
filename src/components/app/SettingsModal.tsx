@@ -5,12 +5,19 @@ import {
     SyncService,
     DIGEST_CONFIG_DEFAULT,
     TRANSLATION_CONFIG_DEFAULT,
+    TranslateProvider,
     type SettingsShape,
     type FeverConfigs,
     type DigestConfig,
     type DigestWeights,
     type TranslationConfig,
 } from "../../scripts/settings-bridge"
+import {
+    model,
+    describeModelError,
+    type ModelStatus,
+    type DownloadProgress,
+} from "../../scripts/model-bridge"
 import type { Group } from "../../scripts/db-bridge"
 import { UNGROUPED_BUCKET } from "../../scripts/digest"
 import { service, describeSyncError } from "../../scripts/service-bridge"
@@ -115,6 +122,21 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [translationCfg, setTranslationCfg] = React.useState<TranslationConfig>(
         TRANSLATION_CONFIG_DEFAULT
     )
+    // Managed-local runtime (Phase 2a): installed-model status + download state.
+    const [modelStatus, setModelStatus] = React.useState<ModelStatus | null>(null)
+    const [modelBusy, setModelBusy] = React.useState(false)
+    const [modelProgress, setModelProgress] =
+        React.useState<DownloadProgress | null>(null)
+    const [modelError, setModelError] = React.useState<string | null>(null)
+
+    const refreshModelStatus = React.useCallback(() => {
+        void model
+            .status()
+            .then(setModelStatus)
+            .catch(e =>
+                console.error("[Settings] model.status failed", e)
+            )
+    }, [])
 
     React.useEffect(() => {
         if (!open) {
@@ -216,6 +238,34 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         },
         []
     )
+
+    // Load installed-model status whenever the Translation tab shows the managed
+    // provider, so the panel reflects reality (installed? running?).
+    React.useEffect(() => {
+        if (
+            open &&
+            tab === "translation" &&
+            translationCfg.provider === TranslateProvider.ManagedLocal
+        ) {
+            refreshModelStatus()
+        }
+    }, [open, tab, translationCfg.provider, refreshModelStatus])
+
+    const onDownloadModel = React.useCallback(() => {
+        const id = modelStatus?.defaultModelId
+        if (!id) return
+        setModelBusy(true)
+        setModelError(null)
+        setModelProgress(null)
+        void model
+            .download(id, p => setModelProgress(p))
+            .then(() => {
+                setModelProgress(null)
+                refreshModelStatus()
+            })
+            .catch(e => setModelError("Download failed: " + describeModelError(e)))
+            .finally(() => setModelBusy(false))
+    }, [modelStatus?.defaultModelId, refreshModelStatus])
 
     const onServiceLogin = React.useCallback(async () => {
         const endpoint = svc.endpoint.trim()
@@ -890,48 +940,137 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                 </label>
                                 <span className={styles.hint}>
                                     Adds a Translate button to the article view.
-                                    Uses a local OpenAI-compatible server (e.g.
-                                    Ollama) — nothing leaves your machine.
+                                    Nothing leaves your machine.
                                 </span>
                             </div>
 
                             <div className={styles.field}>
-                                <label className={styles.label}>Endpoint</label>
-                                <input
-                                    type="text"
+                                <label className={styles.label}>Provider</label>
+                                <select
                                     className={styles.input}
-                                    placeholder="http://localhost:11434/v1"
-                                    value={translationCfg.endpoint}
+                                    value={translationCfg.provider}
                                     onChange={e =>
                                         updateTranslation({
-                                            endpoint: e.target.value,
+                                            provider: e.target
+                                                .value as TranslateProvider,
                                         })
-                                    }
-                                />
+                                    }>
+                                    <option value={TranslateProvider.ManagedLocal}>
+                                        Built-in model (app-managed)
+                                    </option>
+                                    <option value={TranslateProvider.LocalOpenAI}>
+                                        Local OpenAI-compatible server
+                                    </option>
+                                </select>
                                 <span className={styles.hint}>
-                                    Base URL of the OpenAI-compatible API (Ollama
-                                    defaults to <code>http://localhost:11434/v1</code>).
+                                    Built-in downloads and runs a small model for
+                                    you. The other option points at a server you
+                                    run yourself (e.g. Ollama).
                                 </span>
                             </div>
 
-                            <div className={styles.field}>
-                                <label className={styles.label}>Model</label>
-                                <input
-                                    type="text"
-                                    className={styles.input}
-                                    placeholder="e.g. a local translation model"
-                                    value={translationCfg.model}
-                                    onChange={e =>
-                                        updateTranslation({
-                                            model: e.target.value,
-                                        })
-                                    }
-                                />
-                                <span className={styles.hint}>
-                                    Model name served by the endpoint (Ollama:
-                                    the pulled model's tag).
-                                </span>
-                            </div>
+                            {translationCfg.provider ===
+                            TranslateProvider.ManagedLocal ? (
+                                <div className={styles.field}>
+                                    <label className={styles.label}>
+                                        Local model
+                                    </label>
+                                    {modelStatus?.installed ? (
+                                        <span className={styles.hint}>
+                                            Installed:{" "}
+                                            {modelStatus.installed.name} (
+                                            {formatBytes(
+                                                modelStatus.installed.sizeBytes
+                                            )}
+                                            ){" "}
+                                            {modelStatus.running
+                                                ? "· running"
+                                                : "· idle"}
+                                        </span>
+                                    ) : modelBusy ? (
+                                        <span className={styles.hint}>
+                                            {modelProgress
+                                                ? `Downloading… ${downloadLabel(
+                                                      modelProgress
+                                                  )}`
+                                                : "Preparing…"}
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <button
+                                                className={`${styles.btn} ${styles.btnSecondary}`}
+                                                onClick={onDownloadModel}
+                                                disabled={modelBusy}>
+                                                Download recommended model
+                                            </button>
+                                            <span className={styles.hint}>
+                                                Downloads a small translation
+                                                model (~688 MB, Apache-2.0) and
+                                                runs it locally. Requires the
+                                                llama-server binary in your app
+                                                data folder&apos;s{" "}
+                                                <code>bin/</code>.
+                                            </span>
+                                        </>
+                                    )}
+                                    {modelError && (
+                                        <span
+                                            className={styles.hint}
+                                            role="alert">
+                                            {modelError}
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <div className={styles.field}>
+                                        <label className={styles.label}>
+                                            Endpoint
+                                        </label>
+                                        <input
+                                            type="text"
+                                            className={styles.input}
+                                            placeholder="http://localhost:11434/v1"
+                                            value={translationCfg.endpoint}
+                                            onChange={e =>
+                                                updateTranslation({
+                                                    endpoint: e.target.value,
+                                                })
+                                            }
+                                        />
+                                        <span className={styles.hint}>
+                                            Base URL of the OpenAI-compatible API
+                                            (Ollama defaults to{" "}
+                                            <code>
+                                                http://localhost:11434/v1
+                                            </code>
+                                            ).
+                                        </span>
+                                    </div>
+
+                                    <div className={styles.field}>
+                                        <label className={styles.label}>
+                                            Model
+                                        </label>
+                                        <input
+                                            type="text"
+                                            className={styles.input}
+                                            placeholder="e.g. a local translation model"
+                                            value={translationCfg.model}
+                                            onChange={e =>
+                                                updateTranslation({
+                                                    model: e.target.value,
+                                                })
+                                            }
+                                        />
+                                        <span className={styles.hint}>
+                                            Model name served by the endpoint
+                                            (Ollama: the pulled model&apos;s
+                                            tag).
+                                        </span>
+                                    </div>
+                                </>
+                            )}
 
                             <div className={styles.field}>
                                 <label className={styles.label}>
@@ -993,4 +1132,18 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
 
 function clamp(n: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, Math.round(n)))
+}
+
+function formatBytes(n: number): string {
+    if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB`
+    return `${Math.round(n / 1_048_576)} MB`
+}
+
+// Progress label: a percentage when the server reported a total, else raw MB.
+function downloadLabel(p: DownloadProgress): string {
+    if (p.phase === "verifying") return "verifying…"
+    if (p.totalBytes && p.totalBytes > 0) {
+        return `${Math.floor((p.downloadedBytes / p.totalBytes) * 100)}%`
+    }
+    return formatBytes(p.downloadedBytes)
 }

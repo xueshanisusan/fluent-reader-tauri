@@ -192,6 +192,37 @@ pub enum TranslationError {
     Config { message: String },
 }
 
+// Local translation-model management (Phase 2a). Downloading a curated GGUF,
+// importing a local one, and verifying it on disk.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ModelError {
+    // Unknown catalog id, or a source file that isn't there.
+    NotFound { message: String },
+    // Not enough free disk space to hold the download.
+    Disk { message: String },
+    // Transport/HTTP failure while fetching the model, or a concurrent download.
+    Download { message: String },
+    // sha256 of the finished file didn't match the catalog's expected hash.
+    Verify { message: String },
+    // Filesystem / serialization failure (create dir, write manifest, copy, …).
+    Io { message: String },
+}
+
+// Lifecycle of the app-managed llama.cpp `server` sidecar.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RuntimeError {
+    // No local model installed, or the llama-server binary is missing.
+    NotInstalled { message: String },
+    // Failed to spawn the sidecar (binary missing, exited immediately, …).
+    Spawn { message: String },
+    // Spawned but never reported healthy within the timeout.
+    Health { message: String },
+    // Couldn't reserve a local port for the sidecar.
+    Port { message: String },
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackfillSummary {

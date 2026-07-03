@@ -120,6 +120,10 @@ export const DIGEST_CONFIG_DEFAULT: DigestConfig = {
 // provider (Ollama etc.) ships in the MVP.
 export const enum TranslateProvider {
   LocalOpenAI = "localOpenai",
+  // App-managed local runtime (Phase 2a): the app downloads a GGUF and runs a
+  // llama.cpp server itself. The endpoint is resolved at runtime (random port),
+  // so it is NOT persisted here — see model-bridge.ts::runtimeStart.
+  ManagedLocal = "managedLocal",
 }
 
 export interface TranslationConfig {
