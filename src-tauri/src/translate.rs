@@ -239,8 +239,9 @@ fn build_body(model: &str, target_lang: &str, segs: &[String], temperature: f32)
          line. Translate EVERY line fully into {0} — never leave a line in the original \
          language. Do NOT localize or substitute brand names, product names, company names, \
          apps, or other proper nouns; keep them verbatim (e.g. keep 'WhatsApp' as 'WhatsApp'). \
-         Keep numbers, URLs, and inline markup as-is. Do not add commentary, notes, or the \
-         original text.",
+         Keep numbers, URLs, and inline markup as-is. Preserve any <gN>…</gN> and <xN/> \
+         placeholder tags exactly, keeping them wrapped around the same words after \
+         translation. Do not add commentary, notes, or the original text.",
         target_lang
     );
     // Only standard OpenAI sampling fields go in the body so a strict
