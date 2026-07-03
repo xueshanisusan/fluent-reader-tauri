@@ -909,7 +909,15 @@ export function App(): React.ReactElement {
                 opmlBusy={opmlBusy}
                 backfillBusy={backfillBusy}
                 groups={groups}
-                onClose={() => setSettingsOpen(false)}
+                onClose={() => {
+                    setSettingsOpen(false)
+                    // Translation/digest/view settings persist immediately
+                    // (outside the Save-button flow), so pull the latest into
+                    // in-memory appSettings on close — otherwise e.g. enabling
+                    // translation wouldn't surface the Translate button until
+                    // the next launch.
+                    void settings.getAll().then(setAppSettings)
+                }}
                 onChanged={setAppSettings}
                 onImportOpml={onImportOpml}
                 onExportOpml={onExportOpml}

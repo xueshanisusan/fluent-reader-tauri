@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod db;
 pub mod feeds;
+pub mod llm;
 pub mod models;
 pub mod net;
 pub mod notify;
@@ -26,6 +27,7 @@ pub fn run() {
             let db_path = data_dir.join("fluent-reader.db");
             let pool = tauri::async_runtime::block_on(db::open(&db_path))?;
             app.manage(AppState { pool });
+            app.manage(llm::ManagedState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -68,7 +70,29 @@ pub fn run() {
             service::service_mark,
             service::service_mark_feed_read,
             translate::translate_segments,
+            llm::model_catalog,
+            llm::model_status,
+            llm::model_download,
+            llm::model_import,
+            llm::runtime_start,
+            llm::runtime_stop,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|handle, event| {
+            // Reap the managed llama-server so it doesn't outlive the app as a
+            // zombie holding RAM + its port. take() makes this idempotent across
+            // ExitRequested (may fire per-window) and the final Exit.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                if let Some(st) = handle.try_state::<llm::ManagedState>() {
+                    let mut guard = st.runtime.blocking_lock();
+                    if let Some(rt) = guard.take() {
+                        let _ = rt.child.kill();
+                    }
+                }
+            }
+        });
 }

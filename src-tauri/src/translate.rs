@@ -8,20 +8,51 @@
 // are serialized with serde_json::to_string and responses parsed from text.
 use crate::models::TranslationError;
 use reqwest::Client;
+use serde::Serialize;
 use std::time::Duration;
+use tauri::ipc::Channel;
 
-// Local models can be slow; give a generous per-request timeout.
-const TIMEOUT: Duration = Duration::from_secs(120);
-// Max characters of source text per chat request (sized well under a small
-// model's context window, leaving room for the prompt + the translation).
-const CHAR_BUDGET: usize = 1800;
+// Streamed to the frontend after each batch so the reader sees a progress bar
+// fill up instead of an opaque spinner (a 7B model on CPU can take a minute+).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
+// Local CPU inference can be slow on a long batch; give a generous per-request
+// timeout so a legitimately slow translation doesn't get cut off.
+const TIMEOUT: Duration = Duration::from_secs(300);
+// Max characters of source text per chat request. Kept modest: smaller batches
+// make a small model far less likely to drop or echo a line, at the cost of
+// more requests. Sized well under the model's context window.
+const CHAR_BUDGET: usize = 600;
 // Hard cap on batches so a pathologically long article can't run for minutes.
 // Segments beyond this keep their original text.
 const MAX_BATCHES: usize = 40;
+// Ceiling on single-segment retries per call (echo-detected + count-mismatch
+// combined). Without it, an article that's already in the target language — or a
+// model that echoes everything — would fire one extra serial request per
+// segment. Beyond the budget we keep the original text.
+const RETRY_BUDGET: usize = 30;
+// Near-greedy for the first pass (deterministic-ish, faithful); a touch hotter
+// on retry to break an echo/passthrough lock-in.
+const PRIMARY_TEMP: f32 = 0.1;
+const RETRY_TEMP: f32 = 0.3;
+// Word-overlap at or above this (after normalization) counts as "not really
+// translated" — near-verbatim echo. Conservative to avoid flagging cognate
+// language pairs where a real translation legitimately shares some tokens.
+const ECHO_SIMILARITY: f64 = 0.9;
 
 fn build_client() -> Result<Client, TranslationError> {
     Client::builder()
         .timeout(TIMEOUT)
+        // Translation endpoints are local (a managed sidecar or a self-hosted
+        // server). A system/env proxy (e.g. a loopback Clash on 127.0.0.1:7890)
+        // must NOT intercept these — it can't route to the sidecar's port and
+        // the request fails with a generic "error sending request".
+        .no_proxy()
         .user_agent(concat!("fluent-reader-tauri/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| TranslationError::Network {
@@ -145,7 +176,57 @@ pub fn parse_numbered(output: &str, n: usize) -> Option<Vec<String>> {
     Some(out)
 }
 
-fn build_body(model: &str, target_lang: &str, segs: &[String]) -> String {
+// Normalize for echo comparison: collapse whitespace + lowercase.
+fn normalize(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+// Set-based word overlap (Jaccard). Order-insensitive, so a reordered echo still
+// scores high.
+fn word_jaccard(a: &str, b: &str) -> f64 {
+    use std::collections::HashSet;
+    let aw: HashSet<&str> = a.split_whitespace().collect();
+    let bw: HashSet<&str> = b.split_whitespace().collect();
+    let union = aw.union(&bw).count();
+    if union == 0 {
+        return 1.0;
+    }
+    aw.intersection(&bw).count() as f64 / union as f64
+}
+
+/// Heuristic: did the model hand back the source essentially untranslated
+/// (echo / passthrough)? Language-agnostic — a real translation replaces most
+/// word tokens, so we only flag near-verbatim output. Exempts things that are
+/// SUPPOSED to survive unchanged: URLs, pure numbers/punctuation, all-caps /
+/// no-lowercase lines (acronyms, proper nouns), and very short strings.
+///
+/// Assumes the target language differs from the source. If a user points a
+/// translation at same-language text, every segment looks echoed and gets one
+/// (budget-capped) wasted retry — output stays correct, just extra work.
+/// `source` must be the string actually sent to the model (whitespace-folded).
+fn looks_untranslated(source: &str, translation: &str) -> bool {
+    let s = source.trim();
+    let t = translation.trim();
+    if t.is_empty() || s.len() < 10 {
+        return false;
+    }
+    let low = s.to_ascii_lowercase();
+    if low.starts_with("http://") || low.starts_with("https://") || low.starts_with("www.") {
+        return false;
+    }
+    if s.chars().all(|c| c.is_numeric() || c.is_ascii_punctuation() || c.is_whitespace()) {
+        return false;
+    }
+    // No lowercase letter at all → acronym / proper-noun-ish; legitimately kept.
+    if !s.chars().any(|c| c.is_lowercase()) {
+        return false;
+    }
+    let ns = normalize(s);
+    let nt = normalize(t);
+    ns == nt || word_jaccard(&ns, &nt) >= ECHO_SIMILARITY
+}
+
+fn build_body(model: &str, target_lang: &str, segs: &[String], temperature: f32) -> String {
     let numbered = segs
         .iter()
         .enumerate()
@@ -153,19 +234,27 @@ fn build_body(model: &str, target_lang: &str, segs: &[String]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     let system = format!(
-        "You are a professional translation engine. Translate each numbered line into {}. \
+        "You are a professional translation engine. Translate each numbered line into {0}. \
          Output ONLY the translations as the same numbered lines, in the same order, one per \
-         line. Do not add commentary, notes, or the original text. Keep numbers, names, and \
-         inline markup as-is.",
+         line. Translate EVERY line fully into {0} — never leave a line in the original \
+         language. Do NOT localize or substitute brand names, product names, company names, \
+         apps, or other proper nouns; keep them verbatim (e.g. keep 'WhatsApp' as 'WhatsApp'). \
+         Keep numbers, URLs, and inline markup as-is. Do not add commentary, notes, or the \
+         original text.",
         target_lang
     );
+    // Only standard OpenAI sampling fields go in the body so a strict
+    // OpenAI-compatible endpoint can't 400 on an unknown param. Managed-server
+    // tuning (repeat penalty, top-k) is set via the llama-server CLI in
+    // runtime.rs instead.
     let body = serde_json::json!({
         "model": model,
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": numbered }
         ],
-        "temperature": 0,
+        "temperature": temperature,
+        "top_p": 0.95,
         "stream": false
     });
     body.to_string()
@@ -179,8 +268,9 @@ async fn translate_batch(
     model: &str,
     target_lang: &str,
     segs: &[String],
+    temperature: f32,
 ) -> Result<Vec<String>, TranslationError> {
-    let payload = build_body(model, target_lang, segs);
+    let payload = build_body(model, target_lang, segs, temperature);
     let resp = client
         .post(url)
         .header("content-type", "application/json")
@@ -217,12 +307,104 @@ async fn translate_batch(
     })
 }
 
+// Retry one segment at a hotter temperature. Ok(Some) = a usable retry;
+// Ok(None) = content failure (keep original); Err(Network) bubbles to the caller.
+async fn retry_one(
+    client: &Client,
+    url: &str,
+    model: &str,
+    target_lang: &str,
+    seg: &str,
+) -> Result<Option<String>, TranslationError> {
+    match translate_batch(client, url, model, target_lang, &[seg.to_string()], RETRY_TEMP).await {
+        Ok(v) => Ok(v.into_iter().next()),
+        Err(e) if matches!(e, TranslationError::Network { .. }) => Err(e),
+        Err(_) => Ok(None),
+    }
+}
+
+// Core translation loop. `on_batch(done)` is called with the running count of
+// finished segments after each batch, for progress reporting. Assumes inputs are
+// already validated non-empty.
+async fn run_translation(
+    client: &Client,
+    url: &str,
+    model: &str,
+    target_lang: &str,
+    texts: &[String],
+    mut on_batch: impl FnMut(usize),
+) -> Result<Vec<String>, TranslationError> {
+    let folded: Vec<String> = texts.iter().map(|t| collapse_ws(t)).collect();
+
+    // Default to the original text; batches overwrite on success, and a content
+    // failure leaves the original in place (partial translation is acceptable).
+    let mut result = texts.to_vec();
+    // Shared ceiling across both retry paths (echo + count-mismatch) so a
+    // pathological article can't fan out into N serial extra requests.
+    let mut retry_left = RETRY_BUDGET;
+    let mut done = 0usize;
+
+    for batch in chunk_segments(&folded, CHAR_BUDGET).into_iter().take(MAX_BATCHES) {
+        let batch_texts: Vec<String> = batch.iter().map(|&i| folded[i].clone()).collect();
+        match translate_batch(client, url, model, target_lang, &batch_texts, PRIMARY_TEMP).await {
+            Ok(translations) => {
+                for (bi, &i) in batch.iter().enumerate() {
+                    if let Some(s) = translations.get(bi) {
+                        result[i] = s.clone();
+                    }
+                }
+                // Echo pass: some segments come back as the source verbatim (the
+                // line count matched, so the batch "succeeded"). Retry those once,
+                // hotter; only keep the retry if it's no longer an echo.
+                for &i in &batch {
+                    if retry_left == 0 {
+                        break;
+                    }
+                    if looks_untranslated(&folded[i], &result[i]) {
+                        retry_left -= 1;
+                        match retry_one(client, url, model, target_lang, &folded[i]).await {
+                            Ok(Some(s)) if !looks_untranslated(&folded[i], &s) => result[i] = s,
+                            Ok(_) => {} // still echoed or no content → keep original
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                // Transport failure → surface it; the whole translation fails.
+                if matches!(e, TranslationError::Network { .. }) {
+                    return Err(e);
+                }
+                // Content/parse failure (e.g. line-count mismatch) → retry each
+                // segment on its own; keep the original for any that still won't
+                // translate.
+                for &i in &batch {
+                    if retry_left == 0 {
+                        break;
+                    }
+                    retry_left -= 1;
+                    match retry_one(client, url, model, target_lang, &folded[i]).await {
+                        Ok(Some(s)) => result[i] = s,
+                        Ok(None) => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+        done += batch.len();
+        on_batch(done);
+    }
+
+    Ok(result)
+}
+
 #[tauri::command]
 pub async fn translate_segments(
     endpoint: String,
     model: String,
     target_lang: String,
     texts: Vec<String>,
+    on_progress: Channel<TranslateProgress>,
 ) -> Result<Vec<String>, TranslationError> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -243,53 +425,21 @@ pub async fn translate_segments(
         });
     }
 
-    let folded: Vec<String> = texts.iter().map(|t| collapse_ws(t)).collect();
     let client = build_client()?;
     let url = chat_url(&endpoint);
+    let total = texts.len();
 
-    // Default to the original text; batches overwrite on success, and a content
-    // failure leaves the original in place (partial translation is acceptable).
-    let mut result = texts.clone();
+    let out = run_translation(&client, &url, &model, &target_lang, &texts, |done| {
+        let _ = on_progress.send(TranslateProgress {
+            done: done.min(total),
+            total,
+        });
+    })
+    .await?;
 
-    for batch in chunk_segments(&folded, CHAR_BUDGET).into_iter().take(MAX_BATCHES) {
-        let batch_texts: Vec<String> = batch.iter().map(|&i| folded[i].clone()).collect();
-        match translate_batch(&client, &url, &model, &target_lang, &batch_texts).await {
-            Ok(translations) => {
-                for (bi, &i) in batch.iter().enumerate() {
-                    if let Some(s) = translations.get(bi) {
-                        result[i] = s.clone();
-                    }
-                }
-            }
-            Err(e) => {
-                // Transport failure → surface it; the whole translation fails.
-                if matches!(e, TranslationError::Network { .. }) {
-                    return Err(e);
-                }
-                // Content/parse failure → retry each segment on its own; keep the
-                // original for any that still won't translate.
-                for &i in &batch {
-                    match translate_batch(&client, &url, &model, &target_lang, &[folded[i].clone()])
-                        .await
-                    {
-                        Ok(one) => {
-                            if let Some(s) = one.into_iter().next() {
-                                result[i] = s;
-                            }
-                        }
-                        Err(e2) => {
-                            if matches!(e2, TranslationError::Network { .. }) {
-                                return Err(e2);
-                            }
-                            // keep original result[i]
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(result)
+    // Ensure the bar reaches 100% even if MAX_BATCHES capped the tail.
+    let _ = on_progress.send(TranslateProgress { done: total, total });
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -354,5 +504,95 @@ mod tests {
         assert_eq!(parse_numbered("just the translation", 1), Some(v(&["just the translation"])));
         assert_eq!(parse_numbered("1. numbered too", 1), Some(v(&["numbered too"])));
         assert_eq!(parse_numbered("   ", 1), None);
+    }
+
+    #[test]
+    fn echo_verbatim_is_untranslated() {
+        let s = "The Federal Reserve raised interest rates today.";
+        assert!(looks_untranslated(s, s));
+        // Trailing/again-normalized whitespace still counts as an echo.
+        assert!(looks_untranslated(s, "  The Federal   Reserve raised interest rates today. "));
+    }
+
+    #[test]
+    fn real_translation_is_not_untranslated() {
+        assert!(!looks_untranslated(
+            "The Federal Reserve raised interest rates today.",
+            "美联储今天上调了利率。"
+        ));
+    }
+
+    #[test]
+    fn reordered_near_verbatim_is_untranslated() {
+        // Same words, shuffled → Jaccard 1.0 → flagged as an echo.
+        assert!(looks_untranslated(
+            "alpha beta gamma delta epsilon zeta eta theta",
+            "beta alpha gamma epsilon delta theta zeta eta"
+        ));
+    }
+
+    #[test]
+    fn exemptions_are_not_untranslated() {
+        // URL, pure digits/punct, all-caps proper nouns, and short strings are
+        // supposed to survive translation unchanged.
+        assert!(!looks_untranslated(
+            "https://www.example.com/a/very/long/path",
+            "https://www.example.com/a/very/long/path"
+        ));
+        assert!(!looks_untranslated("12345, 67890 (000)", "12345, 67890 (000)"));
+        assert!(!looks_untranslated("NASA SPACEX BOEING LOCKHEED", "NASA SPACEX BOEING LOCKHEED"));
+        assert!(!looks_untranslated("Breaking", "Breaking")); // < 10 chars
+    }
+
+    #[test]
+    fn partial_overlap_is_not_untranslated() {
+        // A real translation that keeps a couple of proper nouns is well below
+        // the echo threshold.
+        assert!(!looks_untranslated(
+            "I use npm and git every single day for my work",
+            "我每天都用 npm 和 git 工作"
+        ));
+    }
+
+    #[tokio::test]
+    async fn echoed_segment_is_retried_and_replaced() {
+        use httpmock::prelude::*;
+        let server = MockServer::start_async().await;
+        let source = "The Federal Reserve raised interest rates today.";
+
+        // First pass (temperature 0.1) echoes the source back untranslated.
+        let echo = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/chat/completions").body_contains("\"temperature\":0.1");
+                then.status(200).header("content-type", "application/json").body(format!(
+                    "{{\"choices\":[{{\"message\":{{\"content\":{}}}}}]}}",
+                    serde_json::to_string(source).unwrap()
+                ));
+            })
+            .await;
+        // Retry (temperature 0.3) returns a real translation.
+        let retry = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/chat/completions").body_contains("\"temperature\":0.3");
+                then.status(200).header("content-type", "application/json").body(
+                    "{\"choices\":[{\"message\":{\"content\":\"美联储今天上调了利率。\"}}]}",
+                );
+            })
+            .await;
+
+        let client = build_client().unwrap();
+        let url = chat_url(&server.url(""));
+        let mut progress = Vec::new();
+        let out = run_translation(&client, &url, "m", "简体中文", &[source.to_string()], |d| {
+            progress.push(d)
+        })
+        .await
+        .expect("ok");
+
+        assert_eq!(out, vec!["美联储今天上调了利率。".to_string()]);
+        assert_eq!(progress, vec![1]); // one batch of one segment → done=1
+
+        echo.assert_async().await;
+        retry.assert_async().await;
     }
 }
