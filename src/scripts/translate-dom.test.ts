@@ -134,3 +134,35 @@ describe("extractTextNodes (block segmentation)", () => {
     expect(html).toContain("<code>npm install</code>")
   })
 })
+
+describe("streaming surface (taggedHtml + buildUnit)", () => {
+  it("marks a whole block on the block element itself", () => {
+    const ex = extractTextNodes(`<p>hi <b>x</b></p>`)
+    expect(ex.taggedHtml).toContain(`<p data-tr-unit="0">`)
+    expect(ex.taggedHtml).not.toContain("<span data-tr-unit")
+  })
+
+  it("wraps an anonymous inline run in a tagged span", () => {
+    const ex = extractTextNodes(`<div>hello<p>x</p></div>`)
+    expect(ex.taggedHtml).toContain(`<span data-tr-unit="0">hello</span>`)
+    expect(ex.taggedHtml).toContain(`<p data-tr-unit="1">x</p>`)
+  })
+
+  it("buildUnit reconstructs one unit's inner HTML", () => {
+    const ex = extractTextNodes(`<p>The <b>x</b></p>`)
+    expect(ex.buildUnit(0, "那 <g0>y</g0>")).toBe("那 <b>y</b>")
+  })
+
+  it("buildUnit falls back to escaped plain text on mismatch", () => {
+    const ex = extractTextNodes(`<p>a <b>y</b></p>`) // unit has a <g0>
+    expect(ex.buildUnit(0, "z < w")).toBe("z &lt; w") // no placeholder → plain
+  })
+
+  it("buildUnit is read-only and repeatable (does not mutate the doc)", () => {
+    const ex = extractTextNodes(`<p>The <b>x</b></p>`)
+    const before = ex.taggedHtml
+    expect(ex.buildUnit(0, "那 <g0>y</g0>")).toBe("那 <b>y</b>")
+    expect(ex.buildUnit(0, "那 <g0>y</g0>")).toBe("那 <b>y</b>")
+    expect(ex.taggedHtml).toBe(before)
+  })
+})

@@ -32,7 +32,14 @@ const DROP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT"])
 export interface Extraction {
   // One entry per translation unit (block / inline run), in document order.
   texts: string[]
-  // Given translations aligned 1:1 with `texts`, return the rebuilt HTML.
+  // The ORIGINAL article with each unit's container marked data-tr-unit="i".
+  // Rendered first for streaming, then patched block-by-block in place.
+  taggedHtml: string
+  // Reconstruct ONE unit's inner HTML from its translation (read-only; safe to
+  // call repeatedly / interleaved). Used for streaming in-place patches.
+  buildUnit: (i: number, translated: string) => string
+  // Given translations aligned 1:1 with `texts`, return the whole rebuilt HTML
+  // (mutates the working doc once). Used for the cache / non-streaming path.
   build: (translations: string[]) => string
 }
 
@@ -43,6 +50,11 @@ interface Unit {
   runNodes: Node[]
   text: string
   map: Map<number, Placeholder>
+  // True when the run is the entire content of its (non-body) block parent, so
+  // we can mark the block itself instead of wrapping the run in a span.
+  wholeParent: boolean
+  // The element carrying data-tr-unit whose children we replace on patch.
+  anchor: Element | null
 }
 
 // ---- pure string helpers (node-testable) --------------------------------
@@ -188,7 +200,15 @@ function collectUnits(node: Node, units: Unit[]): void {
     if (run.length === 0) return
     const { text, map } = serializeRun(run)
     if (hasTranslatableText(text)) {
-      units.push({ parent: node, runNodes: run, text, map })
+      // Whole-parent iff this run is ALL of a non-body block's children — then
+      // we mark the block itself rather than wrap the run in a span (avoids
+      // invalid spans in phrasing-unsafe parents). Captured now, before tagging
+      // mutates the DOM.
+      const wholeParent =
+        node.nodeType === 1 &&
+        (node as Element).tagName !== "BODY" &&
+        run.length === node.childNodes.length
+      units.push({ parent: node, runNodes: run, text, map, wholeParent, anchor: null })
     }
     run = []
   }
@@ -232,34 +252,61 @@ function buildNodes(
   return Array.from(root.childNodes)
 }
 
-function rebuildUnit(unit: Unit, translated: string): void {
-  const doc = unit.parent.ownerDocument as Document
-  let nodes: Node[]
+// Build a unit's fresh translated nodes (from clones in its map — READ-ONLY on
+// the working doc, so repeated/interleaved calls can't interfere). Falls back to
+// plain translated text on any placeholder mismatch.
+function unitNodes(unit: Unit, translated: string, doc: Document): Node[] {
   try {
     const tokens = tokenize(translated)
     if (!validateTokens(tokens, idSets(unit.map))) {
       throw new Error("placeholder mismatch")
     }
-    nodes = buildNodes(tokens, unit.map, doc)
+    return buildNodes(tokens, unit.map, doc)
   } catch {
-    // Fallback: keep the translation, drop this unit's inline formatting.
-    const plain = unescapeText(
-      translated.replace(/<\/?g\d+>|<x\d+\/>/g, "")
-    )
-    nodes = [doc.createTextNode(plain)]
+    const plain = unescapeText(translated.replace(/<\/?g\d+>|<x\d+\/>/g, ""))
+    return [doc.createTextNode(plain)]
   }
-  const first = unit.runNodes[0]
-  for (const nn of nodes) unit.parent.insertBefore(nn, first)
-  for (const rn of unit.runNodes) unit.parent.removeChild(rn)
+}
+
+// Serialize detached nodes to an HTML string (for postMessage into the iframe).
+function serializeNodes(nodes: Node[], doc: Document): string {
+  const tmp = doc.createElement("div")
+  for (const n of nodes) tmp.appendChild(n)
+  return tmp.innerHTML
+}
+
+// Mark each unit's anchor with data-tr-unit: the block element itself when the
+// run is its whole content, else a fresh <span> wrapping the run.
+function tagUnits(units: Unit[], doc: Document): void {
+  units.forEach((u, i) => {
+    if (u.wholeParent && u.parent.nodeType === 1) {
+      const el = u.parent as Element
+      el.setAttribute("data-tr-unit", String(i))
+      u.anchor = el
+    } else {
+      const span = doc.createElement("span")
+      span.setAttribute("data-tr-unit", String(i))
+      u.parent.insertBefore(span, u.runNodes[0])
+      for (const rn of u.runNodes) span.appendChild(rn)
+      u.anchor = span
+    }
+  })
 }
 
 export function extractTextNodes(html: string): Extraction {
   const doc = new DOMParser().parseFromString(html, "text/html")
   const units: Unit[] = []
   collectUnits(doc.body, units)
+  tagUnits(units, doc)
 
   return {
     texts: units.map(u => u.text),
+    taggedHtml: doc.body.innerHTML,
+    buildUnit(i: number, translated: string): string {
+      const u = units[i]
+      if (!u) return ""
+      return serializeNodes(unitNodes(u, translated, doc), doc)
+    },
     build(translations: string[]): string {
       if (translations.length !== units.length) {
         throw new Error(
@@ -267,7 +314,11 @@ export function extractTextNodes(html: string): Extraction {
         )
       }
       try {
-        units.forEach((u, i) => rebuildUnit(u, translations[i]))
+        units.forEach((u, i) => {
+          if (u.anchor) {
+            u.anchor.replaceChildren(...unitNodes(u, translations[i], doc))
+          }
+        })
         return doc.body.innerHTML
       } catch (e) {
         // Last-resort guard: never corrupt the article — show it untranslated.

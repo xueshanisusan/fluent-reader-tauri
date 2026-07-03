@@ -8,10 +8,18 @@ export type TranslationError =
   | { kind: "parse"; message: string }
   | { kind: "config"; message: string };
 
-// Progress ticks streamed from the backend as batches complete.
+// One finished segment: its position in the input list + its translation.
+export interface TranslateSegment {
+  index: number;
+  text: string;
+}
+
+// Progress ticks streamed from the backend as batches complete: a done/total
+// count plus that batch's finished segments (for incremental in-place display).
 export interface TranslateProgress {
   done: number;
   total: number;
+  items: TranslateSegment[];
 }
 
 export const translate = {

@@ -11,6 +11,14 @@ export type IframeMessage =
     | { t: "link";    url: string }
     | { t: "key";     key: string; mods: { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean } }
     | { t: "ctxmenu"; x: number; y: number; text: string | null; href: string | null }
+    // Throttled scroll report so the host can restore scroll after a srcdoc reload.
+    | { t: "scroll";  top: number }
+
+// Host → iframe messages (the streaming translator patches blocks in place and
+// restores scroll after the one tagged-original reload).
+export type HostMessage =
+    | { t: "patch"; i: number; html: string }
+    | { t: "setscroll"; top: number }
 
 export const FORWARD_KEYS: readonly string[] = [
     "Escape",
@@ -85,6 +93,10 @@ export const HOST_BASE_CSS = `
   .fr-title a { color: inherit; text-decoration: none; }
   .fr-title a:hover { text-decoration: underline; }
   .fr-meta { font-size: 0.8em; color: var(--fr-muted, #888); margin: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .fr-tr-in { animation: fr-tr-fade 160ms ease-out; }
+  }
+  @keyframes fr-tr-fade { from { opacity: 0.35; } to { opacity: 1; } }
 `
 
 // Builds a small extra <style> block to override base body font. fontFamily
@@ -168,6 +180,30 @@ export const IFRAME_BOOTSTRAP = `
     var a = e.target && e.target.closest && e.target.closest('a[href]');
     post({t:'ctxmenu', x:e.clientX, y:e.clientY, text:text, href:a?a.href:null});
   }, true);
+
+  function scrollTop(){ return (document.scrollingElement||document.documentElement||document.body).scrollTop; }
+
+  // Throttled scroll report so the host can restore position after the one
+  // tagged-original reload that starts streaming translation.
+  var stTimer = null;
+  window.addEventListener('scroll', function(){
+    if (stTimer) return;
+    stTimer = setTimeout(function(){ stTimer=null; post({t:'scroll', top:scrollTop()}); }, 200);
+  }, {passive:true});
+
+  // Host → iframe: patch a translated block in place, or restore scroll. Only
+  // the host (parent) can send these; the html is already sanitized host-side,
+  // and innerHTML never executes <script>.
+  window.addEventListener('message', function(e){
+    if (e.source !== parent) return;
+    var d = e.data; if (!d) return;
+    if (d.t === 'patch') {
+      var el = document.querySelector('[data-tr-unit="' + d.i + '"]');
+      if (el) { el.innerHTML = d.html; el.classList.add('fr-tr-in'); }
+    } else if (d.t === 'setscroll') {
+      try { window.scrollTo(0, d.top || 0); } catch(_){}
+    }
+  }, false);
 })();
 `
 

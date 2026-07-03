@@ -17,7 +17,10 @@ const ALLOWED_TAGS = [
 ]
 
 const ALLOWED_ATTRS: sanitizeHtml.IOptions["allowedAttributes"] = {
-    "*":        ["class", "id", "dir", "lang", "title", "style"],
+    // data-tr-unit marks a translation unit so the streaming translator can
+    // patch that block in place. A single inert numeric attribute (not a broad
+    // data-* grant); it can land on any block/span, so it's on the global list.
+    "*":        ["class", "id", "dir", "lang", "title", "style", "data-tr-unit"],
     a:          ["href", "rel", "name"],
     img:        ["src", "alt", "width", "height"],
     td:         ["colspan", "rowspan", "align"],

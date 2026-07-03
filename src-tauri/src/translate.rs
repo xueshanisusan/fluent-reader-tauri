@@ -12,13 +12,23 @@ use serde::Serialize;
 use std::time::Duration;
 use tauri::ipc::Channel;
 
-// Streamed to the frontend after each batch so the reader sees a progress bar
-// fill up instead of an opaque spinner (a 7B model on CPU can take a minute+).
+// One finished segment (its position in the input list + its translation),
+// streamed so the frontend can drop each block into place as it's done.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateSegment {
+    pub index: usize,
+    pub text: String,
+}
+
+// Streamed to the frontend after each batch: a done/total count (for the bar)
+// plus the batch's finished segments (for incremental in-place display).
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslateProgress {
     pub done: usize,
     pub total: usize,
+    pub items: Vec<TranslateSegment>,
 }
 
 // Local CPU inference can be slow on a long batch; give a generous per-request
@@ -333,7 +343,9 @@ async fn run_translation(
     model: &str,
     target_lang: &str,
     texts: &[String],
-    mut on_batch: impl FnMut(usize),
+    // Called after each batch (incl. its retries) with the cumulative done count
+    // and that batch's finished (global index, translation) pairs.
+    mut on_batch: impl FnMut(usize, &[(usize, String)]),
 ) -> Result<Vec<String>, TranslationError> {
     let folded: Vec<String> = texts.iter().map(|t| collapse_ws(t)).collect();
 
@@ -393,7 +405,11 @@ async fn run_translation(
             }
         }
         done += batch.len();
-        on_batch(done);
+        // Snapshot this batch's final translations (after any echo/content
+        // retries) for the incremental stream.
+        let items: Vec<(usize, String)> =
+            batch.iter().map(|&i| (i, result[i].clone())).collect();
+        on_batch(done, &items);
     }
 
     Ok(result)
@@ -430,16 +446,27 @@ pub async fn translate_segments(
     let url = chat_url(&endpoint);
     let total = texts.len();
 
-    let out = run_translation(&client, &url, &model, &target_lang, &texts, |done| {
+    let out = run_translation(&client, &url, &model, &target_lang, &texts, |done, items| {
         let _ = on_progress.send(TranslateProgress {
             done: done.min(total),
             total,
+            items: items
+                .iter()
+                .map(|(index, text)| TranslateSegment {
+                    index: *index,
+                    text: text.clone(),
+                })
+                .collect(),
         });
     })
     .await?;
 
     // Ensure the bar reaches 100% even if MAX_BATCHES capped the tail.
-    let _ = on_progress.send(TranslateProgress { done: total, total });
+    let _ = on_progress.send(TranslateProgress {
+        done: total,
+        total,
+        items: Vec::new(),
+    });
     Ok(out)
 }
 
@@ -583,15 +610,26 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = chat_url(&server.url(""));
-        let mut progress = Vec::new();
-        let out = run_translation(&client, &url, "m", "简体中文", &[source.to_string()], |d| {
-            progress.push(d)
-        })
+        let mut progress: Vec<usize> = Vec::new();
+        let mut streamed: Vec<(usize, String)> = Vec::new();
+        let out = run_translation(
+            &client,
+            &url,
+            "m",
+            "简体中文",
+            &[source.to_string()],
+            |d, items| {
+                progress.push(d);
+                streamed.extend(items.iter().cloned());
+            },
+        )
         .await
         .expect("ok");
 
         assert_eq!(out, vec!["美联储今天上调了利率。".to_string()]);
         assert_eq!(progress, vec![1]); // one batch of one segment → done=1
+        // The finished segment is streamed with its global index + final text.
+        assert_eq!(streamed, vec![(0, "美联储今天上调了利率。".to_string())]);
 
         echo.assert_async().await;
         retry.assert_async().await;
