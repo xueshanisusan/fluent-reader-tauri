@@ -16,6 +16,7 @@ import {
     model,
     describeModelError,
     type ModelStatus,
+    type CuratedModel,
     type DownloadProgress,
 } from "../../scripts/model-bridge"
 import type { Group } from "../../scripts/db-bridge"
@@ -122,9 +123,11 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [translationCfg, setTranslationCfg] = React.useState<TranslationConfig>(
         TRANSLATION_CONFIG_DEFAULT
     )
-    // Managed-local runtime (Phase 2a): installed-model status + download state.
+    // Managed-local runtime (Phase 2b): installed inventory + catalog + the id
+    // currently downloading (null = none), plus progress/error for that download.
     const [modelStatus, setModelStatus] = React.useState<ModelStatus | null>(null)
-    const [modelBusy, setModelBusy] = React.useState(false)
+    const [modelCatalog, setModelCatalog] = React.useState<CuratedModel[]>([])
+    const [downloadingId, setDownloadingId] = React.useState<string | null>(null)
     const [modelProgress, setModelProgress] =
         React.useState<DownloadProgress | null>(null)
     const [modelError, setModelError] = React.useState<string | null>(null)
@@ -239,8 +242,8 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         []
     )
 
-    // Load installed-model status whenever the Translation tab shows the managed
-    // provider, so the panel reflects reality (installed? running?).
+    // Load installed-model status + catalog whenever the Translation tab shows
+    // the managed provider, so the panel reflects reality (installed? running?).
     React.useEffect(() => {
         if (
             open &&
@@ -248,24 +251,65 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             translationCfg.provider === TranslateProvider.ManagedLocal
         ) {
             refreshModelStatus()
+            void model
+                .catalog()
+                .then(setModelCatalog)
+                .catch(e => console.error("[Settings] model.catalog failed", e))
         }
     }, [open, tab, translationCfg.provider, refreshModelStatus])
 
-    const onDownloadModel = React.useCallback(() => {
-        const id = modelStatus?.defaultModelId
-        if (!id) return
-        setModelBusy(true)
-        setModelError(null)
-        setModelProgress(null)
-        void model
-            .download(id, p => setModelProgress(p))
-            .then(() => {
-                setModelProgress(null)
-                refreshModelStatus()
-            })
-            .catch(e => setModelError("Download failed: " + describeModelError(e)))
-            .finally(() => setModelBusy(false))
-    }, [modelStatus?.defaultModelId, refreshModelStatus])
+    const onDownloadModel = React.useCallback(
+        (id: string) => {
+            if (downloadingId) return // single-flight (backend enforces too)
+            setDownloadingId(id)
+            setModelError(null)
+            setModelProgress(null)
+            void model
+                .download(id, p => setModelProgress(p))
+                .then(() => {
+                    refreshModelStatus()
+                })
+                .catch(e =>
+                    setModelError("Download failed: " + describeModelError(e))
+                )
+                .finally(() => {
+                    setDownloadingId(null)
+                    setModelProgress(null)
+                })
+        },
+        [downloadingId, refreshModelStatus]
+    )
+
+    const onSetActive = React.useCallback(
+        (id: string) => {
+            setModelError(null)
+            void model
+                .setActive(id)
+                .then(refreshModelStatus)
+                .catch(e =>
+                    setModelError("Couldn't switch model: " + describeModelError(e))
+                )
+        },
+        [refreshModelStatus]
+    )
+
+    const onUninstall = React.useCallback(
+        (m: { id: string; name: string }, running: boolean) => {
+            const msg = running
+                ? `Remove ${m.name}? It's currently in use — this stops translation until you pick another model. You'll need to download it again to use it.`
+                : `Remove ${m.name}? You'll need to download it again to use it.`
+            if (!window.confirm(msg)) return
+            setModelError(null)
+            void model
+                .uninstall(m.id)
+                .then(refreshModelStatus)
+                .catch(e => {
+                    setModelError("Uninstall failed: " + describeModelError(e))
+                    refreshModelStatus()
+                })
+        },
+        [refreshModelStatus]
+    )
 
     const onServiceLogin = React.useCallback(async () => {
         const endpoint = svc.endpoint.trim()
@@ -971,56 +1015,16 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
 
                             {translationCfg.provider ===
                             TranslateProvider.ManagedLocal ? (
-                                <div className={styles.field}>
-                                    <label className={styles.label}>
-                                        Local model
-                                    </label>
-                                    {modelStatus?.installed ? (
-                                        <span className={styles.hint}>
-                                            Installed:{" "}
-                                            {modelStatus.installed.name} (
-                                            {formatBytes(
-                                                modelStatus.installed.sizeBytes
-                                            )}
-                                            ){" "}
-                                            {modelStatus.running
-                                                ? "· running"
-                                                : "· idle"}
-                                        </span>
-                                    ) : modelBusy ? (
-                                        <span className={styles.hint}>
-                                            {modelProgress
-                                                ? `Downloading… ${downloadLabel(
-                                                      modelProgress
-                                                  )}`
-                                                : "Preparing…"}
-                                        </span>
-                                    ) : (
-                                        <>
-                                            <button
-                                                className={`${styles.btn} ${styles.btnSecondary}`}
-                                                onClick={onDownloadModel}
-                                                disabled={modelBusy}>
-                                                Download recommended model
-                                            </button>
-                                            <span className={styles.hint}>
-                                                Downloads a small translation
-                                                model (~688 MB, Apache-2.0) and
-                                                runs it locally. Requires the
-                                                llama-server binary in your app
-                                                data folder&apos;s{" "}
-                                                <code>bin/</code>.
-                                            </span>
-                                        </>
-                                    )}
-                                    {modelError && (
-                                        <span
-                                            className={styles.hint}
-                                            role="alert">
-                                            {modelError}
-                                        </span>
-                                    )}
-                                </div>
+                                <ManagedModelPanel
+                                    status={modelStatus}
+                                    catalog={modelCatalog}
+                                    downloadingId={downloadingId}
+                                    progress={modelProgress}
+                                    error={modelError}
+                                    onDownload={onDownloadModel}
+                                    onSetActive={onSetActive}
+                                    onUninstall={onUninstall}
+                                />
                             ) : (
                                 <>
                                     <div className={styles.field}>
@@ -1126,6 +1130,148 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                     </button>
                 </div>
             </div>
+        </div>
+    )
+}
+
+interface ManagedModelPanelProps {
+    status: ModelStatus | null
+    catalog: CuratedModel[]
+    downloadingId: string | null
+    progress: DownloadProgress | null
+    error: string | null
+    onDownload: (id: string) => void
+    onSetActive: (id: string) => void
+    onUninstall: (m: { id: string; name: string }, running: boolean) => void
+}
+
+// The managed-local model manager: installed inventory (pick active / uninstall)
+// plus a catalog of models available to download. Import of a user .gguf is 2b-2.
+function ManagedModelPanel({
+    status,
+    catalog,
+    downloadingId,
+    progress,
+    error,
+    onDownload,
+    onSetActive,
+    onUninstall,
+}: ManagedModelPanelProps): React.ReactElement {
+    const installed = status?.installed ?? []
+    const activeId = status?.activeId ?? null
+    const runningId = status?.runningId ?? null
+    // Catalog entries not yet installed — the "Add a model" choices.
+    const available = catalog.filter(c => !installed.some(i => i.id === c.id))
+
+    return (
+        <div className={styles.field}>
+            <label className={styles.label}>Local model</label>
+
+            {installed.length > 0 && (
+                <div
+                    className={styles.modelList}
+                    role="radiogroup"
+                    aria-label="Active translation model">
+                    {installed.map(m => {
+                        const isActive = activeId === m.id
+                        const isRunning = runningId === m.id
+                        // Switched active but the old model is still loaded: the
+                        // change applies on the next translation, not right now.
+                        const pending =
+                            isActive && runningId !== null && runningId !== m.id
+                        return (
+                            <div key={m.id} className={styles.modelRow}>
+                                <label className={styles.modelPick}>
+                                    <input
+                                        type="radio"
+                                        name="active-model"
+                                        checked={isActive}
+                                        onChange={() => onSetActive(m.id)}
+                                    />
+                                    <span className={styles.modelName}>
+                                        {m.name}
+                                    </span>
+                                </label>
+                                <span className={styles.modelMeta}>
+                                    {formatBytes(m.sizeBytes)}
+                                    {isRunning && " · running"}
+                                </span>
+                                <button
+                                    className={`${styles.btn} ${styles.btnSecondary}`}
+                                    onClick={() =>
+                                        onUninstall(
+                                            { id: m.id, name: m.name },
+                                            isRunning
+                                        )
+                                    }>
+                                    Uninstall
+                                </button>
+                                {pending && (
+                                    <span className={styles.hint}>
+                                        Active · applies on next translation
+                                    </span>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {available.length > 0 && (
+                <div className={styles.modelAdd}>
+                    <span className={styles.label}>Add a model</span>
+                    {available.map(c => {
+                        const isDownloading = downloadingId === c.id
+                        const isRecommended = c.id === status?.defaultModelId
+                        return (
+                            <div key={c.id} className={styles.modelRow}>
+                                <div className={styles.modelAddInfo}>
+                                    <span className={styles.modelName}>
+                                        {c.name}
+                                        {isRecommended && (
+                                            <span className={styles.modelBadge}>
+                                                Recommended
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className={styles.hint}>
+                                        {formatBytes(c.sizeBytes)} · {c.license}
+                                    </span>
+                                </div>
+                                {isDownloading ? (
+                                    <span className={styles.hint}>
+                                        {progress
+                                            ? `Downloading… ${downloadLabel(progress)}`
+                                            : "Preparing…"}
+                                    </span>
+                                ) : (
+                                    <button
+                                        className={`${styles.btn} ${styles.btnSecondary}`}
+                                        onClick={() => onDownload(c.id)}
+                                        disabled={downloadingId !== null}>
+                                        Download
+                                    </button>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {installed.length === 0 && available.length === 0 && (
+                <span className={styles.hint}>Loading models…</span>
+            )}
+
+            <span className={styles.hint}>
+                Models run locally via the llama-server binary in your app data
+                folder&apos;s <code>bin/</code>. Nothing leaves your machine.
+            </span>
+
+            {error && (
+                <span className={styles.hint} role="alert">
+                    {error}
+                </span>
+            )}
         </div>
     )
 }

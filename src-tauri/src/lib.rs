@@ -74,6 +74,8 @@ pub fn run() {
             llm::model_status,
             llm::model_download,
             llm::model_import,
+            llm::model_set_active,
+            llm::model_uninstall,
             llm::runtime_start,
             llm::runtime_stop,
         ])

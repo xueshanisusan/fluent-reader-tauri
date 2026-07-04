@@ -28,20 +28,42 @@ fn models_dir(app: &AppHandle) -> Result<PathBuf, ModelError> {
         .join("models"))
 }
 
-// The first manifest entry whose file is actually present on disk (guards
-// against a manifest that lists a model the user deleted out-of-band).
-fn installed_present(dir: &PathBuf) -> Result<Option<InstalledModel>, ModelError> {
+// The manifest entries whose files are actually present on disk (guards against
+// a manifest listing a model the user deleted out-of-band).
+fn installed_present(dir: &PathBuf) -> Result<Vec<InstalledModel>, ModelError> {
     Ok(manifest::read(dir)?
         .installed
         .into_iter()
-        .find(|e| dir.join(&e.file).is_file()))
+        .filter(|e| dir.join(&e.file).is_file())
+        .collect())
+}
+
+// The model the runtime should start: the active model if its file is present,
+// else the first present entry, else nothing installed.
+fn active_or_first(dir: &PathBuf) -> Result<Option<InstalledModel>, ModelError> {
+    let m = manifest::read(dir)?;
+    let present: Vec<InstalledModel> = m
+        .installed
+        .into_iter()
+        .filter(|e| dir.join(&e.file).is_file())
+        .collect();
+    if let Some(active) = &m.active_id {
+        if let Some(e) = present.iter().find(|e| &e.id == active) {
+            return Ok(Some(e.clone()));
+        }
+    }
+    Ok(present.into_iter().next())
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelStatus {
-    // The installed model in use, if any.
-    pub installed: Option<InstalledModel>,
+    // Every installed model whose file is present on disk.
+    pub installed: Vec<InstalledModel>,
+    // The chosen active model's id (what the next translate will run), if any.
+    pub active_id: Option<String>,
+    // The model the sidecar is currently serving, if it's up.
+    pub running_id: Option<String>,
     // Whether the sidecar is currently up.
     pub running: bool,
     // The live endpoint when running (random port per session).
@@ -62,13 +84,22 @@ pub async fn model_status(
 ) -> Result<ModelStatus, ModelError> {
     let dir = models_dir(&app)?;
     let installed = installed_present(&dir)?;
+    // Report the EFFECTIVE active id (falls back to first-present) so the picker
+    // radio always reflects the model the next translate will actually run.
+    let active_id = active_or_first(&dir)?.map(|e| e.id);
     let guard = state.runtime.lock().await;
-    let (running, endpoint) = match guard.as_ref() {
-        Some(rt) => (true, Some(runtime::endpoint_for(rt.port))),
-        None => (false, None),
+    let (running, running_id, endpoint) = match guard.as_ref() {
+        Some(rt) => (
+            true,
+            Some(rt.model_id.clone()),
+            Some(runtime::endpoint_for(rt.port)),
+        ),
+        None => (false, None, None),
     };
     Ok(ModelStatus {
         installed,
+        active_id,
+        running_id,
         running,
         endpoint,
         default_model_id: catalog::DEFAULT_MODEL_ID.to_string(),
@@ -125,7 +156,7 @@ pub async fn runtime_start(
     let dir = models_dir(&app).map_err(|e| RuntimeError::Spawn {
         message: format!("{:?}", e),
     })?;
-    let installed = installed_present(&dir)
+    let installed = active_or_first(&dir)
         .map_err(|e| RuntimeError::Spawn {
             message: format!("{:?}", e),
         })?
@@ -138,9 +169,71 @@ pub async fn runtime_start(
 
 #[tauri::command]
 pub async fn runtime_stop(state: State<'_, ManagedState>) -> Result<(), RuntimeError> {
-    let mut guard = state.runtime.lock().await;
-    if let Some(rt) = guard.take() {
-        let _ = rt.child.kill();
+    runtime::stop(&state).await;
+    Ok(())
+}
+
+/// Choose which installed model the runtime uses. Lazy: does NOT restart a
+/// running sidecar — the switch takes effect on the next translate (which calls
+/// runtime_start and finds the model_id changed).
+#[tauri::command]
+pub async fn model_set_active(app: AppHandle, id: String) -> Result<(), ModelError> {
+    let dir = models_dir(&app)?;
+    // set_active requires a manifest entry; also confirm the file is present so
+    // we never activate a model that can't actually start.
+    if !installed_present(&dir)?.iter().any(|e| e.id == id) {
+        return Err(ModelError::NotFound {
+            message: format!("model not installed: {}", id),
+        });
+    }
+    manifest::set_active(&dir, &id)
+}
+
+/// Remove an installed model: stop the sidecar if it's serving this model, wait
+/// for the file handle to be released, delete the file, then drop the manifest
+/// entry. Ordering matters on Windows (llama-server mmaps the .gguf — deleting
+/// while it's open fails). A failed delete leaves the manifest entry intact.
+#[tauri::command]
+pub async fn model_uninstall(
+    app: AppHandle,
+    state: State<'_, ManagedState>,
+    id: String,
+) -> Result<(), ModelError> {
+    let dir = models_dir(&app)?;
+    let entry = manifest::read(&dir)?
+        .installed
+        .into_iter()
+        .find(|e| e.id == id);
+
+    // Stop the sidecar first if it's running THIS model, so the file unlocks.
+    if runtime::running_model_id(&state).await.as_deref() == Some(id.as_str()) {
+        runtime::stop(&state).await;
+    }
+
+    if let Some(entry) = &entry {
+        let path = dir.join(&entry.file);
+        remove_file_with_retry(&path)?;
+    }
+    manifest::remove(&dir, &id)
+}
+
+// Delete `path`, tolerating the brief window where a just-killed sidecar still
+// holds the file open (Windows sharing violation). Already-gone counts as done.
+fn remove_file_with_retry(path: &PathBuf) -> Result<(), ModelError> {
+    use std::time::Duration;
+    const ATTEMPTS: u32 = 20;
+    const DELAY: Duration = Duration::from_millis(100);
+    for attempt in 0..ATTEMPTS {
+        match std::fs::remove_file(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(_) if attempt + 1 < ATTEMPTS => std::thread::sleep(DELAY),
+            Err(e) => {
+                return Err(ModelError::Io {
+                    message: format!("couldn't remove model file (still in use?): {}", e),
+                })
+            }
+        }
     }
     Ok(())
 }

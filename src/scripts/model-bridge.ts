@@ -42,7 +42,12 @@ export interface InstalledModel {
 
 // Mirrors src-tauri/src/llm/mod.rs::ModelStatus.
 export interface ModelStatus {
-  installed: InstalledModel | null
+  // Every installed model whose file is present on disk.
+  installed: InstalledModel[]
+  // The chosen active model's id (what the next translate runs), if any.
+  activeId: string | null
+  // The model the sidecar is currently serving, if it's up.
+  runningId: string | null
   running: boolean
   endpoint: string | null
   defaultModelId: string
@@ -77,6 +82,19 @@ export const model = {
   /** Import a local .gguf the user already has. */
   import(path: string): Promise<InstalledModel> {
     return invoke<InstalledModel>("model_import", { path })
+  },
+
+  /**
+   * Choose which installed model translation uses. Lazy — the switch takes
+   * effect on the next translate (a running sidecar is not restarted eagerly).
+   */
+  setActive(id: string): Promise<void> {
+    return invoke<void>("model_set_active", { id })
+  },
+
+  /** Remove an installed model (stops the sidecar first if it's the one running). */
+  uninstall(id: string): Promise<void> {
+    return invoke<void>("model_uninstall", { id })
   },
 
   /** Ensure the sidecar is up; returns the local OpenAI-compatible endpoint. */
