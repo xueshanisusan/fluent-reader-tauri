@@ -23,6 +23,11 @@ pub struct InstalledModel {
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub installed: Vec<InstalledModel>,
+    // The model the runtime starts by default. Optional + serde default so old
+    // (2a) manifests without the field still load. None → fall back to the first
+    // installed entry.
+    #[serde(default)]
+    pub active_id: Option<String>,
 }
 
 pub fn manifest_path(models_dir: &Path) -> PathBuf {
@@ -62,6 +67,32 @@ pub fn upsert(models_dir: &Path, entry: InstalledModel) -> Result<(), ModelError
     write(models_dir, &m)
 }
 
+/// Set the active model to `id`. The caller is responsible for confirming the
+/// model's file is actually present; here we only require a matching manifest
+/// entry (a since-deleted file is handled by the runtime's fallback).
+pub fn set_active(models_dir: &Path, id: &str) -> Result<(), ModelError> {
+    let mut m = read(models_dir)?;
+    if !m.installed.iter().any(|e| e.id == id) {
+        return Err(ModelError::NotFound {
+            message: format!("model not installed: {}", id),
+        });
+    }
+    m.active_id = Some(id.to_string());
+    write(models_dir, &m)
+}
+
+/// Drop the entry with `id` (no-op if absent). Clears `active_id` if it pointed
+/// at the removed model. Does NOT touch the model's file on disk — the caller
+/// deletes that first (so a failed delete leaves the manifest consistent).
+pub fn remove(models_dir: &Path, id: &str) -> Result<(), ModelError> {
+    let mut m = read(models_dir)?;
+    m.installed.retain(|e| e.id != id);
+    if m.active_id.as_deref() == Some(id) {
+        m.active_id = None;
+    }
+    write(models_dir, &m)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +119,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let m = Manifest {
             installed: vec![sample("a"), sample("b")],
+            active_id: Some("a".to_string()),
         };
         write(dir.path(), &m).unwrap();
         assert_eq!(read(dir.path()).unwrap(), m);
@@ -103,5 +135,54 @@ mod tests {
         let m = read(dir.path()).unwrap();
         assert_eq!(m.installed.len(), 1);
         assert_eq!(m.installed[0].size_bytes, 999);
+    }
+
+    #[test]
+    fn set_active_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        upsert(dir.path(), sample("a")).unwrap();
+        set_active(dir.path(), "a").unwrap();
+        assert_eq!(read(dir.path()).unwrap().active_id, Some("a".to_string()));
+    }
+
+    #[test]
+    fn set_active_on_uninstalled_errs() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = set_active(dir.path(), "ghost").unwrap_err();
+        assert!(matches!(err, ModelError::NotFound { .. }));
+    }
+
+    #[test]
+    fn remove_drops_entry_and_clears_active() {
+        let dir = tempfile::tempdir().unwrap();
+        upsert(dir.path(), sample("a")).unwrap();
+        upsert(dir.path(), sample("b")).unwrap();
+        set_active(dir.path(), "a").unwrap();
+        remove(dir.path(), "a").unwrap();
+        let m = read(dir.path()).unwrap();
+        assert_eq!(m.installed.len(), 1);
+        assert_eq!(m.installed[0].id, "b");
+        assert_eq!(m.active_id, None); // removing the active model clears it
+    }
+
+    #[test]
+    fn remove_keeps_active_when_other_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        upsert(dir.path(), sample("a")).unwrap();
+        upsert(dir.path(), sample("b")).unwrap();
+        set_active(dir.path(), "a").unwrap();
+        remove(dir.path(), "b").unwrap();
+        assert_eq!(read(dir.path()).unwrap().active_id, Some("a".to_string()));
+    }
+
+    #[test]
+    fn old_manifest_without_active_id_loads() {
+        // 2a wrote { "installed": [...] } with no activeId — must still parse.
+        let dir = tempfile::tempdir().unwrap();
+        let json = r#"{"installed":[{"id":"a","name":"Sample","file":"a.gguf","sizeBytes":123,"sha256":"abc","source":"curated"}]}"#;
+        std::fs::write(manifest_path(dir.path()), json).unwrap();
+        let m = read(dir.path()).unwrap();
+        assert_eq!(m.installed.len(), 1);
+        assert_eq!(m.active_id, None);
     }
 }

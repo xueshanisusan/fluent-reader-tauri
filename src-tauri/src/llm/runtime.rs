@@ -9,7 +9,7 @@
 // spawn it directly. When installers land (bundle.active), switch to externalBin.
 use crate::models::RuntimeError;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -25,8 +25,11 @@ const START_ATTEMPTS: u32 = 3;
 pub struct ManagedRuntime {
     pub child: CommandChild,
     pub port: u16,
-    #[allow(dead_code)]
     pub model_id: String,
+    // Identifies THIS spawn. A dying sidecar's crash-watcher only clears the
+    // slot if the generation still matches — so killing an old process to switch
+    // models can't null out the new runtime we just installed in its place.
+    pub generation: u64,
 }
 
 #[derive(Default)]
@@ -35,10 +38,37 @@ pub struct ManagedState {
     pub runtime: tokio::sync::Mutex<Option<ManagedRuntime>>,
     // Single-flight guard for downloads (see commands::model_download).
     pub downloading: AtomicBool,
+    // Monotonic spawn counter; each successful start claims the next value.
+    pub generation: AtomicU64,
 }
 
 pub fn endpoint_for(port: u16) -> String {
     format!("http://127.0.0.1:{}/v1", port)
+}
+
+// A dying sidecar's watcher may clear the runtime slot only when the slot still
+// holds ITS generation. Pure so the guard logic is unit-tested without a process.
+fn watcher_should_clear(slot_generation: Option<u64>, my_generation: u64) -> bool {
+    slot_generation == Some(my_generation)
+}
+
+/// Kill the current sidecar if any (idempotent). Returns once the kill signal is
+/// sent; the OS may take a brief moment to release the model file's handle.
+pub async fn stop(state: &ManagedState) {
+    let mut guard = state.runtime.lock().await;
+    if let Some(rt) = guard.take() {
+        let _ = rt.child.kill();
+    }
+}
+
+/// The model_id the running sidecar serves, if one is up.
+pub async fn running_model_id(state: &ManagedState) -> Option<String> {
+    state
+        .runtime
+        .lock()
+        .await
+        .as_ref()
+        .map(|r| r.model_id.clone())
 }
 
 /// Reserve an ephemeral local port by binding to :0 and reading it back. The
@@ -143,10 +173,11 @@ pub async fn ensure_runtime(
     let mut guard = state.runtime.lock().await;
 
     if let Some(rt) = guard.as_ref() {
-        if health_ok(rt.port).await {
+        // Reuse only a healthy runtime serving the SAME model. A different
+        // requested model (the user switched active) or a dead one is reaped.
+        if rt.model_id == model_id && health_ok(rt.port).await {
             return Ok(endpoint_for(rt.port));
         }
-        // Stale/dead — reap it and restart.
         if let Some(old) = guard.take() {
             let _ = old.child.kill();
         }
@@ -197,14 +228,25 @@ pub async fn ensure_runtime(
 
         match wait_healthy_or_exit(port, &mut rx).await {
             Ok(()) => {
+                let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
                 // Ongoing crash watcher: if the process dies later, clear the
-                // runtime so the next translate transparently restarts it.
+                // runtime so the next translate transparently restarts it — but
+                // ONLY if the slot still holds this generation. When we kill an
+                // old process to switch models, its watcher fires after we've
+                // installed the new runtime; the generation check stops it from
+                // nulling the replacement.
                 let app2 = app.clone();
                 tokio::spawn(async move {
                     while let Some(ev) = rx.recv().await {
                         if let CommandEvent::Terminated(_) = ev {
                             if let Some(st) = app2.try_state::<ManagedState>() {
-                                *st.runtime.lock().await = None;
+                                let mut g = st.runtime.lock().await;
+                                if watcher_should_clear(
+                                    g.as_ref().map(|r| r.generation),
+                                    generation,
+                                ) {
+                                    *g = None;
+                                }
                             }
                             break;
                         }
@@ -214,6 +256,7 @@ pub async fn ensure_runtime(
                     child,
                     port,
                     model_id,
+                    generation,
                 });
                 return Ok(endpoint_for(port));
             }
@@ -239,5 +282,15 @@ mod tests {
     #[test]
     fn endpoint_format() {
         assert_eq!(endpoint_for(8080), "http://127.0.0.1:8080/v1");
+    }
+
+    #[test]
+    fn watcher_clears_only_its_own_generation() {
+        // The slot holds this watcher's generation → safe to clear.
+        assert!(watcher_should_clear(Some(3), 3));
+        // The slot was replaced by a newer runtime (model switch) → must NOT clear.
+        assert!(!watcher_should_clear(Some(4), 3));
+        // Slot already empty → nothing to clear.
+        assert!(!watcher_should_clear(None, 3));
     }
 }
