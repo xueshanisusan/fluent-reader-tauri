@@ -136,6 +136,10 @@ pub async fn model_download(
     result
 }
 
+/// Import a user-picked local .gguf. `path` is an arbitrary filesystem path, so
+/// this command must only be reachable from trusted app JS — it is: the article
+/// iframe is sandboxed (allow-scripts, no Tauri API injected), so feed content
+/// can't invoke it. If that sandbox is ever loosened, gate this path.
 #[tauri::command]
 pub async fn model_import(app: AppHandle, path: String) -> Result<InstalledModel, ModelError> {
     let dir = models_dir(&app)?;

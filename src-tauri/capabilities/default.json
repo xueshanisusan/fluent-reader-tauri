@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities: store + scoped shell open for article links.",
+  "description": "Default capabilities: store + scoped shell open for article links + open-file dialog for model import.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -13,6 +13,7 @@
     "core:window:allow-internal-toggle-maximize",
     "store:default",
     "notification:default",
+    "dialog:allow-open",
     {
       "identifier": "shell:allow-open",
       "allow": [
