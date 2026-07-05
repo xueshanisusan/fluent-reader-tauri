@@ -186,9 +186,26 @@ pub fn import(models_dir: &Path, src: &Path) -> Result<InstalledModel, ModelErro
     std::fs::create_dir_all(models_dir).map_err(|e| ModelError::Io {
         message: e.to_string(),
     })?;
+
+    // The copy needs as much free space as the source is large (dest is the same
+    // size). Precheck so a multi-GB import can't half-fill the disk before failing.
+    let src_size = std::fs::metadata(src).map(|m| m.len()).unwrap_or(0);
+    let free = fs2::available_space(models_dir).map_err(|e| ModelError::Io {
+        message: e.to_string(),
+    })?;
+    if !disk_ok(free, src_size) {
+        return Err(ModelError::Disk {
+            message: format!(
+                "not enough free space: need ~{} MB, have {} MB",
+                src_size / 1_048_576,
+                free / 1_048_576
+            ),
+        });
+    }
+
     let dest = models_dir.join(&file_name);
     std::fs::copy(src, &dest).map_err(|e| ModelError::Io {
-        message: e.to_string(),
+        message: format!("copy failed (is the file in use?): {}", e),
     })?;
     let size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
     let hash = sha256_file(&dest)?;

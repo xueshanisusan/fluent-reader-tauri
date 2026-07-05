@@ -19,6 +19,7 @@ import {
     type CuratedModel,
     type DownloadProgress,
 } from "../../scripts/model-bridge"
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
 import type { Group } from "../../scripts/db-bridge"
 import { UNGROUPED_BUCKET } from "../../scripts/digest"
 import { service, describeSyncError } from "../../scripts/service-bridge"
@@ -128,6 +129,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [modelStatus, setModelStatus] = React.useState<ModelStatus | null>(null)
     const [modelCatalog, setModelCatalog] = React.useState<CuratedModel[]>([])
     const [downloadingId, setDownloadingId] = React.useState<string | null>(null)
+    const [importing, setImporting] = React.useState(false)
     const [modelProgress, setModelProgress] =
         React.useState<DownloadProgress | null>(null)
     const [modelError, setModelError] = React.useState<string | null>(null)
@@ -310,6 +312,29 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         },
         [refreshModelStatus]
     )
+
+    const onImport = React.useCallback(() => {
+        if (importing || downloadingId) return
+        setModelError(null)
+        void (async () => {
+            try {
+                const picked = await openFileDialog({
+                    multiple: false,
+                    directory: false,
+                    filters: [{ name: "GGUF model", extensions: ["gguf"] }],
+                })
+                // null = user cancelled the dialog; do nothing.
+                if (typeof picked !== "string") return
+                setImporting(true)
+                await model.import(picked)
+                refreshModelStatus()
+            } catch (e) {
+                setModelError("Import failed: " + describeModelError(e))
+            } finally {
+                setImporting(false)
+            }
+        })()
+    }, [importing, downloadingId, refreshModelStatus])
 
     const onServiceLogin = React.useCallback(async () => {
         const endpoint = svc.endpoint.trim()
@@ -1019,11 +1044,13 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                     status={modelStatus}
                                     catalog={modelCatalog}
                                     downloadingId={downloadingId}
+                                    importing={importing}
                                     progress={modelProgress}
                                     error={modelError}
                                     onDownload={onDownloadModel}
                                     onSetActive={onSetActive}
                                     onUninstall={onUninstall}
+                                    onImport={onImport}
                                 />
                             ) : (
                                 <>
@@ -1138,24 +1165,28 @@ interface ManagedModelPanelProps {
     status: ModelStatus | null
     catalog: CuratedModel[]
     downloadingId: string | null
+    importing: boolean
     progress: DownloadProgress | null
     error: string | null
     onDownload: (id: string) => void
     onSetActive: (id: string) => void
     onUninstall: (m: { id: string; name: string }, running: boolean) => void
+    onImport: () => void
 }
 
 // The managed-local model manager: installed inventory (pick active / uninstall)
-// plus a catalog of models available to download. Import of a user .gguf is 2b-2.
+// plus a catalog of models to download and a button to import a user's own .gguf.
 function ManagedModelPanel({
     status,
     catalog,
     downloadingId,
+    importing,
     progress,
     error,
     onDownload,
     onSetActive,
     onUninstall,
+    onImport,
 }: ManagedModelPanelProps): React.ReactElement {
     const installed = status?.installed ?? []
     const activeId = status?.activeId ?? null
@@ -1217,50 +1248,68 @@ function ManagedModelPanel({
                 </div>
             )}
 
-            {available.length > 0 && (
-                <div className={styles.modelAdd}>
-                    <span className={styles.label}>Add a model</span>
-                    {available.map(c => {
-                        const isDownloading = downloadingId === c.id
-                        const isRecommended = c.id === status?.defaultModelId
-                        return (
-                            <div key={c.id} className={styles.modelRow}>
-                                <div className={styles.modelAddInfo}>
-                                    <span className={styles.modelName}>
-                                        {c.name}
-                                        {isRecommended && (
-                                            <span className={styles.modelBadge}>
-                                                Recommended
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className={styles.hint}>
-                                        {formatBytes(c.sizeBytes)} · {c.license}
-                                    </span>
-                                </div>
-                                {isDownloading ? (
-                                    <span className={styles.hint}>
-                                        {progress
-                                            ? `Downloading… ${downloadLabel(progress)}`
-                                            : "Preparing…"}
-                                    </span>
-                                ) : (
-                                    <button
-                                        className={`${styles.btn} ${styles.btnSecondary}`}
-                                        onClick={() => onDownload(c.id)}
-                                        disabled={downloadingId !== null}>
-                                        Download
-                                    </button>
-                                )}
+            <div className={styles.modelAdd}>
+                <span className={styles.label}>Add a model</span>
+                {available.map(c => {
+                    const isDownloading = downloadingId === c.id
+                    const isRecommended = c.id === status?.defaultModelId
+                    return (
+                        <div key={c.id} className={styles.modelRow}>
+                            <div className={styles.modelAddInfo}>
+                                <span className={styles.modelName}>
+                                    {c.name}
+                                    {isRecommended && (
+                                        <span className={styles.modelBadge}>
+                                            Recommended
+                                        </span>
+                                    )}
+                                </span>
+                                <span className={styles.hint}>
+                                    {formatBytes(c.sizeBytes)} · {c.license}
+                                </span>
                             </div>
-                        )
-                    })}
+                            {isDownloading ? (
+                                <span className={styles.hint}>
+                                    {progress
+                                        ? `Downloading… ${downloadLabel(progress)}`
+                                        : "Preparing…"}
+                                </span>
+                            ) : (
+                                <button
+                                    className={`${styles.btn} ${styles.btnSecondary}`}
+                                    onClick={() => onDownload(c.id)}
+                                    disabled={
+                                        downloadingId !== null || importing
+                                    }>
+                                    Download
+                                </button>
+                            )}
+                        </div>
+                    )
+                })}
+                <div className={styles.modelRow}>
+                    <span className={styles.modelAddInfo}>
+                        <span className={styles.modelName}>
+                            Import your own model
+                        </span>
+                        <span className={styles.hint}>
+                            A .gguf file you already have (copied into the app).
+                        </span>
+                    </span>
+                    {importing ? (
+                        <span className={styles.hint}>
+                            Importing… large files take a while
+                        </span>
+                    ) : (
+                        <button
+                            className={`${styles.btn} ${styles.btnSecondary}`}
+                            onClick={onImport}
+                            disabled={downloadingId !== null}>
+                            Import .gguf…
+                        </button>
+                    )}
                 </div>
-            )}
-
-            {installed.length === 0 && available.length === 0 && (
-                <span className={styles.hint}>Loading models…</span>
-            )}
+            </div>
 
             <span className={styles.hint}>
                 Models run locally via the llama-server binary in your app data
