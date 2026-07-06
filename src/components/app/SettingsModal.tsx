@@ -11,6 +11,7 @@ import {
     type DigestConfig,
     type DigestWeights,
     type TranslationConfig,
+    type TranslationTarget,
 } from "../../scripts/settings-bridge"
 import {
     model,
@@ -242,6 +243,18 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
             })
         },
         []
+    )
+
+    // Edit the target-language list; keep targetLang synced to the first entry
+    // (full dedup/trim normalization runs on the next load — settings-bridge).
+    const updateTargets = React.useCallback(
+        (next: TranslationTarget[]) => {
+            updateTranslation({
+                targets: next,
+                targetLang: next[0]?.lang?.trim() ?? "",
+            })
+        },
+        [updateTranslation]
     )
 
     // Load installed-model status + catalog whenever the Translation tab shows
@@ -1105,21 +1118,102 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
 
                             <div className={styles.field}>
                                 <label className={styles.label}>
-                                    Target language
+                                    Target languages
                                 </label>
-                                <input
-                                    type="text"
-                                    className={styles.input}
-                                    placeholder="e.g. 简体中文 / English"
-                                    value={translationCfg.targetLang}
-                                    onChange={e =>
-                                        updateTranslation({
-                                            targetLang: e.target.value,
-                                        })
-                                    }
-                                />
+                                <div className={styles.modelList}>
+                                    {translationCfg.targets.map((t, i) => (
+                                        <div
+                                            key={i}
+                                            className={styles.targetRow}>
+                                            <input
+                                                type="text"
+                                                className={styles.input}
+                                                placeholder="e.g. 简体中文 / English"
+                                                value={t.lang}
+                                                onChange={e =>
+                                                    updateTargets(
+                                                        translationCfg.targets.map(
+                                                            (u, j) =>
+                                                                j === i
+                                                                    ? {
+                                                                          ...u,
+                                                                          lang: e
+                                                                              .target
+                                                                              .value,
+                                                                      }
+                                                                    : u
+                                                        )
+                                                    )
+                                                }
+                                            />
+                                            {translationCfg.provider ===
+                                                TranslateProvider.ManagedLocal && (
+                                                <select
+                                                    className={styles.targetSelect}
+                                                    value={t.modelId}
+                                                    onChange={e =>
+                                                        updateTargets(
+                                                            translationCfg.targets.map(
+                                                                (u, j) =>
+                                                                    j === i
+                                                                        ? {
+                                                                              ...u,
+                                                                              modelId:
+                                                                                  e
+                                                                                      .target
+                                                                                      .value,
+                                                                          }
+                                                                        : u
+                                                            )
+                                                        )
+                                                    }>
+                                                    <option value="">
+                                                        Default (active model)
+                                                    </option>
+                                                    {(
+                                                        modelStatus?.installed ??
+                                                        []
+                                                    ).map(m => (
+                                                        <option
+                                                            key={m.id}
+                                                            value={m.id}>
+                                                            {m.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            <button
+                                                className={`${styles.btn} ${styles.btnSecondary}`}
+                                                onClick={() =>
+                                                    updateTargets(
+                                                        translationCfg.targets.filter(
+                                                            (_, j) => j !== i
+                                                        )
+                                                    )
+                                                }
+                                                aria-label="Remove target language">
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button
+                                    className={`${styles.btn} ${styles.btnSecondary}`}
+                                    onClick={() =>
+                                        updateTargets([
+                                            ...translationCfg.targets,
+                                            { lang: "", modelId: "" },
+                                        ])
+                                    }>
+                                    Add target language
+                                </button>
                                 <span className={styles.hint}>
-                                    The language to translate articles into.
+                                    Articles translate into the first language by
+                                    default; with two or more, a picker appears in
+                                    the article toolbar.
+                                    {translationCfg.provider ===
+                                        TranslateProvider.ManagedLocal &&
+                                        " Each language can use a specific installed model."}
                                 </span>
                             </div>
                         </div>
