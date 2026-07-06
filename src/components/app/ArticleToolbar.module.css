@@ -72,3 +72,22 @@
 .starredOn {
     color: var(--star);
 }
+
+/* Compact target-language picker, themed to sit among the icon buttons. */
+.langSelect {
+    height: 24px;
+    max-width: 110px;
+    box-sizing: border-box;
+    padding: 0 4px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-default);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.langSelect:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

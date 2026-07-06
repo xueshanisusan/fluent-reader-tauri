@@ -41,12 +41,29 @@ fn installed_present(dir: &PathBuf) -> Result<Vec<InstalledModel>, ModelError> {
 // The model the runtime should start: the active model if its file is present,
 // else the first present entry, else nothing installed.
 fn active_or_first(dir: &PathBuf) -> Result<Option<InstalledModel>, ModelError> {
+    resolve_start_model(dir, None)
+}
+
+// Resolve which installed model to start. `requested` is a per-translate routing
+// override (a target-language → model binding): use it when that model's file is
+// present, otherwise gracefully fall back to the active model / first present.
+// A routed model that was uninstalled thus degrades to the default instead of
+// trying to spawn a missing file.
+fn resolve_start_model(
+    dir: &PathBuf,
+    requested: Option<&str>,
+) -> Result<Option<InstalledModel>, ModelError> {
     let m = manifest::read(dir)?;
     let present: Vec<InstalledModel> = m
         .installed
         .into_iter()
         .filter(|e| dir.join(&e.file).is_file())
         .collect();
+    if let Some(id) = requested {
+        if let Some(e) = present.iter().find(|e| e.id == id) {
+            return Ok(Some(e.clone()));
+        }
+    }
     if let Some(active) = &m.active_id {
         if let Some(e) = present.iter().find(|e| &e.id == active) {
             return Ok(Some(e.clone()));
@@ -152,15 +169,21 @@ pub async fn model_import(app: AppHandle, path: String) -> Result<InstalledModel
         })?
 }
 
+/// Ensure the sidecar is up and return its endpoint. `model_id` is an optional
+/// per-translate routing override (a target-language's bound model); when given
+/// and installed, that model is started (restarting the sidecar if a different
+/// model was running), otherwise the active model is used. This does NOT change
+/// the persisted active model.
 #[tauri::command]
 pub async fn runtime_start(
     app: AppHandle,
     state: State<'_, ManagedState>,
+    model_id: Option<String>,
 ) -> Result<String, RuntimeError> {
     let dir = models_dir(&app).map_err(|e| RuntimeError::Spawn {
         message: format!("{:?}", e),
     })?;
-    let installed = active_or_first(&dir)
+    let installed = resolve_start_model(&dir, model_id.as_deref())
         .map_err(|e| RuntimeError::Spawn {
             message: format!("{:?}", e),
         })?
@@ -240,4 +263,82 @@ fn remove_file_with_retry(path: &PathBuf) -> Result<(), ModelError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::manifest::{self, InstalledModel};
+
+    // Install a model with a real (dummy) file so installed_present sees it.
+    fn install(dir: &PathBuf, id: &str, active: bool) {
+        let file = format!("{}.gguf", id);
+        std::fs::write(dir.join(&file), b"weights").unwrap();
+        manifest::upsert(
+            dir,
+            InstalledModel {
+                id: id.to_string(),
+                name: id.to_string(),
+                file,
+                size_bytes: 7,
+                sha256: None,
+                source: "curated".to_string(),
+            },
+        )
+        .unwrap();
+        if active {
+            manifest::set_active(dir, id).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolve_uses_requested_when_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        install(&dir, "a", true);
+        install(&dir, "b", false);
+        let got = resolve_start_model(&dir, Some("b")).unwrap().unwrap();
+        assert_eq!(got.id, "b"); // routed override wins over active
+    }
+
+    #[test]
+    fn resolve_falls_back_to_active_when_requested_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        install(&dir, "a", true);
+        // "ghost" isn't installed → fall back to the active model, not spawn a
+        // missing file.
+        let got = resolve_start_model(&dir, Some("ghost")).unwrap().unwrap();
+        assert_eq!(got.id, "a");
+    }
+
+    #[test]
+    fn resolve_none_when_nothing_installed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        assert!(resolve_start_model(&dir, Some("x")).unwrap().is_none());
+    }
+
+    #[test]
+    fn active_or_first_ignores_active_with_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        install(&dir, "a", false);
+        // active points at an id whose file was deleted out-of-band → first present.
+        manifest::upsert(
+            &dir,
+            InstalledModel {
+                id: "gone".to_string(),
+                name: "gone".to_string(),
+                file: "gone.gguf".to_string(), // no file written
+                size_bytes: 0,
+                sha256: None,
+                source: "curated".to_string(),
+            },
+        )
+        .unwrap();
+        manifest::set_active(&dir, "gone").unwrap();
+        let got = active_or_first(&dir).unwrap().unwrap();
+        assert_eq!(got.id, "a");
+    }
 }

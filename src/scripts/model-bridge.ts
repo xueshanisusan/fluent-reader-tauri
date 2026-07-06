@@ -97,9 +97,13 @@ export const model = {
     return invoke<void>("model_uninstall", { id })
   },
 
-  /** Ensure the sidecar is up; returns the local OpenAI-compatible endpoint. */
-  runtimeStart(): Promise<string> {
-    return invoke<string>("runtime_start")
+  /**
+   * Ensure the sidecar is up; returns the local OpenAI-compatible endpoint.
+   * `modelId` is an optional per-translate routing override — start that model
+   * (if installed) instead of the active one, without changing the active choice.
+   */
+  runtimeStart(modelId?: string): Promise<string> {
+    return invoke<string>("runtime_start", { modelId: modelId ?? null })
   },
 
   runtimeStop(): Promise<void> {

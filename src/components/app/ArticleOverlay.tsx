@@ -86,6 +86,18 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
 
     const translateEnabled = !!translationConfig?.enabled
     const targetLang = translationConfig?.targetLang?.trim() ?? ""
+    const targets = translationConfig?.targets ?? []
+    // Per-article target-language pick (kept across articles as a reading-session
+    // preference). Resolve by lang against the CURRENT targets so a settings edit
+    // that removes the picked language falls back to the default, never crashes.
+    const [pickedLang, setPickedLang] = React.useState("")
+    const currentLang =
+        pickedLang && targets.some(t => t.lang === pickedLang)
+            ? pickedLang
+            : targetLang
+    // The managed model this language routes to ("" = use the active model).
+    const routedModelId =
+        targets.find(t => t.lang === currentLang)?.modelId ?? ""
     const [translating, setTranslating] = React.useState(false)
     const [translated, setTranslated] = React.useState(false)
     const [transError, setTransError] = React.useState<string | null>(null)
@@ -133,6 +145,112 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
         el.style.width = `${pct}%`
     }, [translateProgress])
 
+    // Translate the current article into `lang`, routing to `modelId` ("" = the
+    // active model). Streams blocks into the iframe in place. Used by both the
+    // Translate toggle and the target-language picker (which re-translates).
+    const startTranslation = React.useCallback(
+        (lang: string, modelId: string) => {
+            if (!translationConfig?.enabled) return
+            if (!lang) {
+                setTransError("Set a target language in Translation settings.")
+                return
+            }
+            const key = `${item.iid}:${lang}`
+            const cached = cacheGet(key)
+            if (cached !== undefined) {
+                streamIdRef.current++ // cancel any in-flight stream
+                setTranslatedHtml(cached)
+                setTranslated(true)
+                setTranslating(false)
+                setTranslateStarting(false)
+                setTranslateProgress(null)
+                setTransError(null)
+                return
+            }
+
+            const iid0 = item.iid
+            const html0 = item.content
+            const myStream = ++streamIdRef.current
+            setTransError(null)
+
+            const extraction = extractTextNodes(html0)
+            if (extraction.texts.length === 0) {
+                setTranslatedHtml(html0)
+                setTranslated(true)
+                return
+            }
+            // Show the tagged original NOW (one reload); each block is patched in
+            // place as it finishes, so the reader can start immediately.
+            setTranslatedHtml(extraction.taggedHtml)
+            setTranslated(true)
+            setTranslating(true)
+            setTranslateStarting(true)
+            setTranslateProgress({ done: 0, total: extraction.texts.length })
+
+            const live = (): boolean =>
+                iidRef.current === iid0 && streamIdRef.current === myStream
+
+            void (async () => {
+                try {
+                    // ManagedLocal: app owns the runtime — start it (idempotent)
+                    // for the routed model and use its ephemeral endpoint. The
+                    // cold model load is the indeterminate "preparing" phase.
+                    let endpoint = translationConfig.endpoint
+                    let modelName = translationConfig.model
+                    if (
+                        translationConfig.provider ===
+                        TranslateProvider.ManagedLocal
+                    ) {
+                        endpoint = await model.runtimeStart(modelId || undefined)
+                        if (!live()) return
+                        modelName = modelName || "local"
+                    }
+                    if (live()) setTranslateStarting(false)
+
+                    const translations = await translate.segments(
+                        endpoint,
+                        modelName,
+                        lang,
+                        extraction.texts,
+                        p => {
+                            if (!live()) return
+                            setTranslateProgress({ done: p.done, total: p.total })
+                            for (const it of p.items) {
+                                articleViewRef.current?.patchUnit(
+                                    it.index,
+                                    sanitize(
+                                        extraction.buildUnit(it.index, it.text)
+                                    )
+                                )
+                            }
+                        }
+                    )
+                    // Cache the whole translation for an instant re-open; the
+                    // iframe is already patched, so we DON'T swap html (no reload).
+                    if (
+                        iidRef.current === iid0 &&
+                        translations.length === extraction.texts.length
+                    ) {
+                        cacheSet(key, extraction.build(translations))
+                    }
+                } catch (e) {
+                    if (live()) {
+                        setTransError(
+                            "Translation failed: " + describeTranslationError(e)
+                        )
+                    }
+                } finally {
+                    if (streamIdRef.current === myStream) {
+                        setTranslating(false)
+                        setTranslateStarting(false)
+                        setTranslateProgress(null)
+                    }
+                }
+            })()
+        },
+        [translationConfig, item.iid, item.content]
+    )
+
     const onToggleTranslate = React.useCallback(() => {
         if (!translationConfig?.enabled) return
         if (translated) {
@@ -144,94 +262,22 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
             setTranslateProgress(null)
             return
         }
-        if (!targetLang) {
-            setTransError("Set a target language in Translation settings.")
-            return
-        }
-        const key = `${item.iid}:${targetLang}`
-        const cached = cacheGet(key)
-        if (cached !== undefined) {
-            setTranslatedHtml(cached)
-            setTranslated(true)
-            setTransError(null)
-            return
-        }
+        startTranslation(currentLang, routedModelId)
+    }, [translationConfig, translated, currentLang, routedModelId, startTranslation])
 
-        const iid0 = item.iid
-        const html0 = item.content
-        const myStream = ++streamIdRef.current
-        setTransError(null)
-
-        const extraction = extractTextNodes(html0)
-        if (extraction.texts.length === 0) {
-            setTranslatedHtml(html0)
-            setTranslated(true)
-            return
-        }
-        // Show the tagged original NOW (one reload); each block is patched in
-        // place as it finishes, so the reader can start immediately.
-        setTranslatedHtml(extraction.taggedHtml)
-        setTranslated(true)
-        setTranslating(true)
-        setTranslateStarting(true)
-        setTranslateProgress({ done: 0, total: extraction.texts.length })
-
-        const live = (): boolean =>
-            iidRef.current === iid0 && streamIdRef.current === myStream
-
-        void (async () => {
-            try {
-                // ManagedLocal: app owns the runtime — start it (idempotent) and
-                // use its ephemeral endpoint. The cold model load is the
-                // indeterminate "preparing" phase before the first block lands.
-                let endpoint = translationConfig.endpoint
-                let modelName = translationConfig.model
-                if (translationConfig.provider === TranslateProvider.ManagedLocal) {
-                    endpoint = await model.runtimeStart()
-                    if (!live()) return
-                    modelName = modelName || "local"
-                }
-                if (live()) setTranslateStarting(false)
-
-                const translations = await translate.segments(
-                    endpoint,
-                    modelName,
-                    targetLang,
-                    extraction.texts,
-                    p => {
-                        if (!live()) return
-                        setTranslateProgress({ done: p.done, total: p.total })
-                        for (const it of p.items) {
-                            articleViewRef.current?.patchUnit(
-                                it.index,
-                                sanitize(extraction.buildUnit(it.index, it.text))
-                            )
-                        }
-                    }
-                )
-                // Cache the whole translation for an instant re-open; the iframe
-                // is already fully patched, so we DON'T swap the html (no reload).
-                if (
-                    iidRef.current === iid0 &&
-                    translations.length === extraction.texts.length
-                ) {
-                    cacheSet(key, extraction.build(translations))
-                }
-            } catch (e) {
-                if (live()) {
-                    setTransError(
-                        "Translation failed: " + describeTranslationError(e)
-                    )
-                }
-            } finally {
-                if (streamIdRef.current === myStream) {
-                    setTranslating(false)
-                    setTranslateStarting(false)
-                    setTranslateProgress(null)
-                }
+    // Picking a different target language re-translates into it (unless we're on
+    // the original, in which case it just becomes the next Translate target).
+    const onPickTarget = React.useCallback(
+        (lang: string) => {
+            setPickedLang(lang)
+            if (translated) {
+                const modelId =
+                    targets.find(t => t.lang === lang)?.modelId ?? ""
+                startTranslation(lang, modelId)
             }
-        })()
-    }, [translationConfig, targetLang, translated, item.iid, item.content])
+        },
+        [translated, targets, startTranslation]
+    )
 
     const displayHtml =
         translated && translatedHtml !== null ? translatedHtml : item.content
@@ -278,6 +324,9 @@ export function ArticleOverlay(props: ArticleOverlayProps): React.ReactElement {
                     translating={translating}
                     translated={translated}
                     onToggleTranslate={onToggleTranslate}
+                    translateTargets={targets}
+                    currentLang={currentLang}
+                    onPickTarget={onPickTarget}
                 />
                 {translating && translated && (
                     <div className={styles.transProgress}>

@@ -1,5 +1,6 @@
 import * as React from "react"
 import type { Item } from "../../scripts/db-bridge"
+import type { TranslationTarget } from "../../scripts/settings-bridge"
 import styles from "./ArticleToolbar.module.css"
 
 export interface ArticleToolbarProps {
@@ -18,6 +19,11 @@ export interface ArticleToolbarProps {
     translating?: boolean
     translated?: boolean
     onToggleTranslate?: () => void
+    // Per-article target-language routing. The picker shows only when there are
+    // ≥2 configured targets; picking one re-translates into that language.
+    translateTargets?: TranslationTarget[]
+    currentLang?: string
+    onPickTarget?: (lang: string) => void
 }
 
 // Header for the article overlay, matching the original Fluent Reader: source
@@ -39,8 +45,13 @@ export function ArticleToolbar(
         translating,
         translated,
         onToggleTranslate,
+        translateTargets,
+        currentLang,
+        onPickTarget,
     } = props
     const [iconOk, setIconOk] = React.useState(true)
+    const showTargetPicker =
+        translateEnabled && (translateTargets?.length ?? 0) >= 2
 
     return (
         <div className={styles.bar}>
@@ -85,6 +96,21 @@ export function ArticleToolbar(
                 title={item.hidden ? "Unhide" : "Hide"}>
                 {item.hidden ? <EyeIcon /> : <EyeOffIcon />}
             </button>
+            {showTargetPicker && (
+                <select
+                    className={styles.langSelect}
+                    value={currentLang}
+                    disabled={translating}
+                    onChange={e => onPickTarget?.(e.target.value)}
+                    aria-label="Translate into"
+                    title={`Translate into ${currentLang}`}>
+                    {translateTargets!.map(t => (
+                        <option key={t.lang} value={t.lang}>
+                            {t.lang}
+                        </option>
+                    ))}
+                </select>
+            )}
             {translateEnabled && (
                 <button
                     className={`${styles.iconBtn} ${translated ? styles.starredOn : ""}`}

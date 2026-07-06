@@ -126,6 +126,13 @@ export const enum TranslateProvider {
   ManagedLocal = "managedLocal",
 }
 
+// A configured target language and the managed model it routes to. modelId ""
+// means "use the active model" (no per-language override).
+export interface TranslationTarget {
+  lang: string;
+  modelId: string;
+}
+
 export interface TranslationConfig {
   // Off by default (dark launch) — the Translate button only appears when on.
   enabled: boolean;
@@ -134,8 +141,12 @@ export interface TranslationConfig {
   endpoint: string;
   // Model name served by that endpoint, e.g. a local MiniCPM.
   model: string;
-  // Free-text target language name, e.g. "简体中文" / "English". Empty = unset.
+  // The default/current target language, kept in sync with targets[0]. Empty =
+  // unset. Retained for the "unset" check and any legacy reader.
   targetLang: string;
+  // Configured target languages (each optionally routed to a specific model).
+  // The first is the default. May be empty (then targetLang is the sole target).
+  targets: TranslationTarget[];
 }
 
 export const TRANSLATION_CONFIG_DEFAULT: TranslationConfig = {
@@ -144,7 +155,35 @@ export const TRANSLATION_CONFIG_DEFAULT: TranslationConfig = {
   endpoint: "http://localhost:11434/v1",
   model: "",
   targetLang: "",
+  targets: [],
 };
+
+// Normalize a stored (possibly legacy) translation config: migrate a lone
+// targetLang into a one-entry targets list, drop blank/duplicate-language rows,
+// and keep targetLang in sync with targets[0]. Idempotent — safe on read + write.
+export function normalizeTranslationConfig(
+  cfg: TranslationConfig
+): TranslationConfig {
+  const rawTargets = Array.isArray(cfg.targets) ? cfg.targets : [];
+  let targets: TranslationTarget[] = [];
+  const seen = new Set<string>();
+  for (const t of rawTargets) {
+    const lang = (t?.lang ?? "").trim();
+    if (!lang || seen.has(lang)) continue; // drop blanks + duplicate languages
+    seen.add(lang);
+    targets.push({ lang, modelId: t?.modelId ?? "" });
+  }
+  // Legacy: no targets but a free-text targetLang → seed a single target.
+  if (targets.length === 0) {
+    const legacy = (cfg.targetLang ?? "").trim();
+    if (legacy) targets = [{ lang: legacy, modelId: "" }];
+  }
+  return {
+    ...cfg,
+    targets,
+    targetLang: targets[0]?.lang ?? (cfg.targetLang ?? "").trim(),
+  };
+}
 
 const DEFAULTS: SettingsShape = {
   theme: ThemeSettings.Default,
@@ -215,6 +254,8 @@ export const settings = {
       const v = await s.get(k);
       if (v !== undefined && v !== null) (out[k] as unknown) = v;
     }
+    // Migrate/normalize a possibly-legacy translation config (targetLang-only).
+    out.translationConfig = normalizeTranslationConfig(out.translationConfig);
     return out;
   },
 

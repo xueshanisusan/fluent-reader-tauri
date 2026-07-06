@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest"
 import {
     isFeverActive,
+    normalizeTranslationConfig,
+    TranslateProvider,
     SyncService,
     type ServiceConfigs,
     type FeverConfigs,
+    type TranslationConfig,
 } from "./settings-bridge"
 
 function fever(over: Partial<FeverConfigs>): ServiceConfigs {
@@ -52,5 +55,59 @@ describe("isFeverActive", () => {
             fetchLimit: 250,
         }
         expect(isFeverActive(cfg)).toBeNull()
+    })
+})
+
+describe("normalizeTranslationConfig", () => {
+    const base = (over: Partial<TranslationConfig>): TranslationConfig => ({
+        enabled: false,
+        provider: TranslateProvider.ManagedLocal,
+        endpoint: "",
+        model: "",
+        targetLang: "",
+        targets: [],
+        ...over,
+    })
+
+    it("migrates a legacy targetLang into a single target", () => {
+        // A 2b config had no `targets`; the field is missing on the stored blob.
+        const cfg = base({ targetLang: "简体中文" })
+        delete (cfg as Partial<TranslationConfig>).targets
+        const out = normalizeTranslationConfig(cfg as TranslationConfig)
+        expect(out.targets).toEqual([{ lang: "简体中文", modelId: "" }])
+        expect(out.targetLang).toBe("简体中文")
+    })
+
+    it("keeps targetLang in sync with the first target", () => {
+        const out = normalizeTranslationConfig(
+            base({
+                targetLang: "stale",
+                targets: [
+                    { lang: "English", modelId: "m1" },
+                    { lang: "日本語", modelId: "" },
+                ],
+            })
+        )
+        expect(out.targetLang).toBe("English")
+    })
+
+    it("drops blank languages and deduplicates by language", () => {
+        const out = normalizeTranslationConfig(
+            base({
+                targets: [
+                    { lang: " English ", modelId: "m1" },
+                    { lang: "", modelId: "x" },
+                    { lang: "English", modelId: "m2" }, // dup lang → first wins
+                ],
+            })
+        )
+        expect(out.targets).toEqual([{ lang: "English", modelId: "m1" }])
+    })
+
+    it("is idempotent", () => {
+        const once = normalizeTranslationConfig(
+            base({ targetLang: "English" })
+        )
+        expect(normalizeTranslationConfig(once)).toEqual(once)
     })
 })
