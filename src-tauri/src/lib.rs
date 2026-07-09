@@ -10,6 +10,7 @@ pub mod repo;
 pub mod rules;
 pub mod search;
 pub mod service;
+pub mod shortcut;
 pub mod translate;
 
 use commands::AppState;
@@ -22,6 +23,21 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let quit_requested =
+                    *app.state::<shortcut::AppQuitState>().0.lock().unwrap();
+                if !quit_requested {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -29,6 +45,7 @@ pub fn run() {
             let pool = tauri::async_runtime::block_on(db::open(&db_path))?;
             app.manage(AppState { pool });
             app.manage(llm::ManagedState::default());
+            app.manage(shortcut::AppQuitState(std::sync::Mutex::new(false)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -80,6 +97,7 @@ pub fn run() {
             llm::runtime_start,
             llm::runtime_stop,
             llm::runtime_binary_download,
+            shortcut::exit_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
