@@ -5,6 +5,8 @@ pub mod catalog;
 pub mod download;
 pub mod manifest;
 pub mod runtime;
+pub mod runtime_catalog;
+pub mod runtime_install;
 
 pub use runtime::ManagedState;
 
@@ -87,6 +89,12 @@ pub struct ModelStatus {
     pub endpoint: Option<String>,
     // The id the "download recommended model" button pulls.
     pub default_model_id: String,
+    // Whether a llama-server binary is currently resolvable (env override or
+    // the app-managed bin/ dir). Translation can't run until this is true.
+    pub binary_installed: bool,
+    // Whether we ship a pinned llama-server build for this OS/arch at all —
+    // false means the "Download" button can't help; wording differs in the UI.
+    pub binary_supported: bool,
 }
 
 #[tauri::command]
@@ -120,7 +128,20 @@ pub async fn model_status(
         running,
         endpoint,
         default_model_id: catalog::DEFAULT_MODEL_ID.to_string(),
+        binary_installed: runtime::is_binary_installed(&app),
+        binary_supported: runtime_catalog::current_target().is_some(),
     })
+}
+
+/// Download and install the pinned llama-server binary for this machine into
+/// the app-managed `bin/` dir. Single-flight (state.downloading_binary).
+#[tauri::command]
+pub async fn runtime_binary_download(
+    app: AppHandle,
+    state: State<'_, ManagedState>,
+    on_progress: Channel<runtime_install::BinaryDownloadProgress>,
+) -> Result<(), RuntimeError> {
+    runtime_install::download(&app, &state, on_progress).await
 }
 
 #[tauri::command]

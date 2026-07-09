@@ -17,6 +17,10 @@ export type RuntimeError =
   | { kind: "spawn"; message: string }
   | { kind: "health"; message: string }
   | { kind: "port"; message: string }
+  | { kind: "unsupported"; message: string }
+  | { kind: "disk"; message: string }
+  | { kind: "download"; message: string }
+  | { kind: "verify"; message: string }
 
 // Mirrors src-tauri/src/llm/catalog.rs::CuratedModel.
 export interface CuratedModel {
@@ -51,6 +55,11 @@ export interface ModelStatus {
   running: boolean
   endpoint: string | null
   defaultModelId: string
+  // Whether a llama-server binary is currently resolvable. Translation can't
+  // run until this is true.
+  binaryInstalled: boolean
+  // Whether we ship a pinned llama-server build for this OS/arch at all.
+  binarySupported: boolean
 }
 
 // Mirrors src-tauri/src/llm/download.rs::DownloadProgress.
@@ -58,6 +67,13 @@ export interface DownloadProgress {
   downloadedBytes: number
   totalBytes: number | null
   phase: "downloading" | "verifying"
+}
+
+// Mirrors src-tauri/src/llm/runtime_install.rs::BinaryDownloadProgress.
+export interface BinaryDownloadProgress {
+  downloadedBytes: number
+  totalBytes: number | null
+  phase: "downloading" | "verifying" | "extracting"
 }
 
 export const model = {
@@ -108,6 +124,19 @@ export const model = {
 
   runtimeStop(): Promise<void> {
     return invoke<void>("runtime_stop")
+  },
+
+  /**
+   * Download and install the pinned llama-server binary for this machine,
+   * reporting progress via `onProgress`. Resolves once it's installed and
+   * ready to spawn.
+   */
+  downloadBinary(
+    onProgress: (p: BinaryDownloadProgress) => void
+  ): Promise<void> {
+    const channel = new Channel<BinaryDownloadProgress>()
+    channel.onmessage = onProgress
+    return invoke<void>("runtime_binary_download", { onProgress: channel })
   },
 }
 

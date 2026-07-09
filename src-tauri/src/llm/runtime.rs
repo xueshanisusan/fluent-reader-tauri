@@ -36,8 +36,12 @@ pub struct ManagedRuntime {
 pub struct ManagedState {
     // Held across the async start so concurrent starts serialize (idempotent).
     pub runtime: tokio::sync::Mutex<Option<ManagedRuntime>>,
-    // Single-flight guard for downloads (see commands::model_download).
+    // Single-flight guard for model downloads (see commands::model_download).
     pub downloading: AtomicBool,
+    // Single-flight guard for the llama-server binary download, kept separate
+    // from `downloading` so a model fetch and a binary fetch don't block each
+    // other unnecessarily.
+    pub downloading_binary: AtomicBool,
     // Monotonic spawn counter; each successful start claims the next value.
     pub generation: AtomicU64,
 }
@@ -87,6 +91,26 @@ pub fn free_port() -> Result<u16, RuntimeError> {
     Ok(port)
 }
 
+// Shared with runtime_install.rs so the installer writes to exactly the path
+// this resolver checks.
+pub fn server_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    }
+}
+
+pub fn bin_dir(app: &AppHandle) -> Result<PathBuf, RuntimeError> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|e| RuntimeError::Spawn {
+            message: e.to_string(),
+        })?
+        .join("bin"))
+}
+
 fn llama_server_path(app: &AppHandle) -> Result<PathBuf, RuntimeError> {
     if let Ok(p) = std::env::var("LLAMA_SERVER_PATH") {
         let pb = PathBuf::from(p);
@@ -94,19 +118,7 @@ fn llama_server_path(app: &AppHandle) -> Result<PathBuf, RuntimeError> {
             return Ok(pb);
         }
     }
-    let name = if cfg!(windows) {
-        "llama-server.exe"
-    } else {
-        "llama-server"
-    };
-    let pb = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| RuntimeError::Spawn {
-            message: e.to_string(),
-        })?
-        .join("bin")
-        .join(name);
+    let pb = bin_dir(app)?.join(server_binary_name());
     if pb.is_file() {
         Ok(pb)
     } else {
@@ -114,6 +126,13 @@ fn llama_server_path(app: &AppHandle) -> Result<PathBuf, RuntimeError> {
             message: format!("llama-server binary not found at {}", pb.display()),
         })
     }
+}
+
+/// Whether a llama-server binary can currently be resolved (env override or
+/// the app-managed `bin/` dir) — the gate the "Download" button in Settings
+/// flips off.
+pub fn is_binary_installed(app: &AppHandle) -> bool {
+    llama_server_path(app).is_ok()
 }
 
 async fn health_ok(port: u16) -> bool {

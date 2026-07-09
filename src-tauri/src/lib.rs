@@ -79,6 +79,7 @@ pub fn run() {
             llm::model_uninstall,
             llm::runtime_start,
             llm::runtime_stop,
+            llm::runtime_binary_download,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

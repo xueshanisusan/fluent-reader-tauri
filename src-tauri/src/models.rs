@@ -221,6 +221,15 @@ pub enum RuntimeError {
     Health { message: String },
     // Couldn't reserve a local port for the sidecar.
     Port { message: String },
+    // No pinned llama-server build for this OS/arch.
+    Unsupported { message: String },
+    // Not enough free disk space to hold the llama-server download.
+    Disk { message: String },
+    // Transport/HTTP failure while fetching llama-server, or a concurrent download.
+    Download { message: String },
+    // sha256 of the downloaded archive didn't match the pinned target's, or the
+    // extracted archive didn't contain a llama-server binary.
+    Verify { message: String },
 }
 
 #[derive(Debug, Clone, Serialize)]

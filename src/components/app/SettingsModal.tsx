@@ -19,6 +19,7 @@ import {
     type ModelStatus,
     type CuratedModel,
     type DownloadProgress,
+    type BinaryDownloadProgress,
 } from "../../scripts/model-bridge"
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
 import type { Group } from "../../scripts/db-bridge"
@@ -134,6 +135,10 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
     const [modelProgress, setModelProgress] =
         React.useState<DownloadProgress | null>(null)
     const [modelError, setModelError] = React.useState<string | null>(null)
+    const [binaryDownloading, setBinaryDownloading] = React.useState(false)
+    const [binaryProgress, setBinaryProgress] =
+        React.useState<BinaryDownloadProgress | null>(null)
+    const [binaryError, setBinaryError] = React.useState<string | null>(null)
 
     const refreshModelStatus = React.useCallback(() => {
         void model
@@ -294,6 +299,25 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
         },
         [downloadingId, refreshModelStatus]
     )
+
+    const onDownloadBinary = React.useCallback(() => {
+        if (binaryDownloading) return // single-flight (backend enforces too)
+        setBinaryDownloading(true)
+        setBinaryError(null)
+        setBinaryProgress(null)
+        void model
+            .downloadBinary(p => setBinaryProgress(p))
+            .then(() => {
+                refreshModelStatus()
+            })
+            .catch(e =>
+                setBinaryError("Download failed: " + describeModelError(e))
+            )
+            .finally(() => {
+                setBinaryDownloading(false)
+                setBinaryProgress(null)
+            })
+    }, [binaryDownloading, refreshModelStatus])
 
     const onSetActive = React.useCallback(
         (id: string) => {
@@ -1064,6 +1088,10 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                     onSetActive={onSetActive}
                                     onUninstall={onUninstall}
                                     onImport={onImport}
+                                    binaryDownloading={binaryDownloading}
+                                    binaryProgress={binaryProgress}
+                                    binaryError={binaryError}
+                                    onDownloadBinary={onDownloadBinary}
                                 />
                             ) : (
                                 <>
@@ -1266,6 +1294,10 @@ interface ManagedModelPanelProps {
     onSetActive: (id: string) => void
     onUninstall: (m: { id: string; name: string }, running: boolean) => void
     onImport: () => void
+    binaryDownloading: boolean
+    binaryProgress: BinaryDownloadProgress | null
+    binaryError: string | null
+    onDownloadBinary: () => void
 }
 
 // The managed-local model manager: installed inventory (pick active / uninstall)
@@ -1281,16 +1313,57 @@ function ManagedModelPanel({
     onSetActive,
     onUninstall,
     onImport,
+    binaryDownloading,
+    binaryProgress,
+    binaryError,
+    onDownloadBinary,
 }: ManagedModelPanelProps): React.ReactElement {
     const installed = status?.installed ?? []
     const activeId = status?.activeId ?? null
     const runningId = status?.runningId ?? null
     // Catalog entries not yet installed — the "Add a model" choices.
     const available = catalog.filter(c => !installed.some(i => i.id === c.id))
+    const binaryInstalled = status?.binaryInstalled ?? true // assume yes until status loads, to avoid a flash of the warning
+    const binarySupported = status?.binarySupported ?? true
 
     return (
         <div className={styles.field}>
             <label className={styles.label}>Local model</label>
+
+            {!binaryInstalled && (
+                <div className={styles.modelRow}>
+                    <span className={styles.modelAddInfo}>
+                        <span className={styles.modelName}>
+                            Translation engine (llama-server)
+                        </span>
+                        <span className={styles.hint}>
+                            {binarySupported
+                                ? "Required to run any local model. One-time download, ~15–20 MB."
+                                : "No prebuilt engine for your OS/CPU yet — set LLAMA_SERVER_PATH to a binary you provide."}
+                        </span>
+                    </span>
+                    {binarySupported &&
+                        (binaryDownloading ? (
+                            <span className={styles.hint}>
+                                {binaryProgress
+                                    ? `Downloading… ${downloadLabel(binaryProgress)}`
+                                    : "Preparing…"}
+                            </span>
+                        ) : (
+                            <button
+                                className={`${styles.btn} ${styles.btnSecondary}`}
+                                onClick={onDownloadBinary}
+                                disabled={binaryDownloading}>
+                                Download
+                            </button>
+                        ))}
+                </div>
+            )}
+            {binaryError && (
+                <span className={styles.hint} role="alert">
+                    {binaryError}
+                </span>
+            )}
 
             {installed.length > 0 && (
                 <div
@@ -1429,8 +1502,13 @@ function formatBytes(n: number): string {
 }
 
 // Progress label: a percentage when the server reported a total, else raw MB.
-function downloadLabel(p: DownloadProgress): string {
+function downloadLabel(p: {
+    downloadedBytes: number
+    totalBytes: number | null
+    phase: string
+}): string {
     if (p.phase === "verifying") return "verifying…"
+    if (p.phase === "extracting") return "extracting…"
     if (p.totalBytes && p.totalBytes > 0) {
         return `${Math.floor((p.downloadedBytes / p.totalBytes) * 100)}%`
     }
