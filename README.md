@@ -1,84 +1,140 @@
 <p align="center">
-  <img width="120" height="120" src="https://github.com/yang991178/fluent-reader/raw/master/build/icon.png">
+  <img width="120" height="120" src="build/icon.png">
 </p>
-<h3 align="center">Fluent Reader</h3>
-<p align="center">A modern desktop RSS reader</p>
-<p align="center">
-  <img src="https://img.shields.io/github/v/release/yang991178/fluent-reader?label=version" />
-  <img src="https://img.shields.io/github/downloads/yang991178/fluent-reader/total" />
-  <img src="https://github.com/yang991178/fluent-reader/workflows/CI%2FCD%20Release/badge.svg" />
-</p>
+<h3 align="center">Fluent Reader Tauri</h3>
+<p align="center">A Tauri + Rust rewrite of Fluent Reader, with on-device AI translation</p>
 <hr />
 
-## Download
+> **Status: experimental / work in progress.** This is a personal rewrite, not
+> an official successor to Fluent Reader. Expect rough edges, missing sync
+> services (see below), and no signed/notarized release builds yet.
 
-For Windows 10 users, the recommended way of installation is through [Microsoft Store](https://www.microsoft.com/store/apps/9P71FC94LRH8?cid=github). 
-This enables auto-update and experimental ARM64 support. 
-macOS users can also get Fluent Reader from the [Mac App Store](https://apps.apple.com/app/id6761698838).
+## Credits
 
-If you are using Linux or an older version of Windows, you can [get Fluent Reader from GitHub releases](https://github.com/yang991178/fluent-reader/releases).
+Fluent Reader Tauri is a derivative work of
+**[Fluent Reader](https://github.com/yang991178/fluent-reader)** by
+**Haoyuan Liu ([@yang991178](https://github.com/yang991178))** — the original
+Electron + React RSS reader this project is rewritten from. Its UI, data
+model, and much of the frontend logic are carried over and reimplemented here
+on top of a Tauri + Rust backend. If you just want the original, actively
+maintained app, [get it here](https://github.com/yang991178/fluent-reader) or
+support its author through
+[GitHub Sponsors](https://github.com/sponsors/yang991178).
 
-### Mobile App
+The original project's BSD 3-Clause notice, reproduced per its attribution
+requirement:
 
-The repo of the mobile version of this app [can be found here](https://github.com/yang991178/fluent-reader-lite).
+```
+BSD 3-Clause License
 
-## Features
+Copyright (c) 2020, Haoyuan Liu
+All rights reserved.
 
-<p align="center">
-  <img src="https://github.com/yang991178/fluent-reader/raw/master/docs/imgs/screenshot.jpg">
-</p>
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
 
-- A modern UI inspired by Fluent Design System with full dark mode support.
-- Read locally or sync with self-hosted services compatible with Fever or Google Reader API.
-- Sync with RSS Services including Inoreader, Feedbin, The Old Reader, BazQux Reader, and more.
-- Importing or exporting OPML files, full application data backup & restoration.
-- Read the full content with the built-in article view or load webpages by default.
-- Search for articles with regular expressions or filter by read status.
-- Organize your subscriptions with folder-like groupings.
-- Single-key [keyboard shortcuts](https://github.com/yang991178/fluent-reader/wiki/Support#keyboard-shortcuts).
-- Hide, mark as read, or star articles automatically as they arrive with regular expression rules.
-- Fetch articles in the background and send push notifications.
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
 
-Support for other RSS services are [under fundraising](https://github.com/yang991178/fluent-reader/issues/23). 
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+Fluent Reader Tauri itself (the Tauri/Rust rewrite, the translation feature,
+and everything added since) is licensed separately under the GPL — see
+[License](#license).
+
+## What's different from Fluent Reader
+
+This is not a 1:1 port. The Electron shell and the Node/Lovefield storage
+layer were replaced with a Tauri + Rust backend (SQLite instead of
+Lovefield), and the sync layer was narrowed while a new AI translation layer
+was added.
+
+### New — not in the original
+
+- **On-device AI translation.** Auto-downloads a matching `llama-server`
+  runtime for your OS/arch and runs a local, OpenAI-compatible chat endpoint.
+  Ships with a curated default model (Qwen2.5-7B-Instruct, GGUF) and supports
+  importing your own `.gguf` models.
+- **Per-article target language and model routing** — pick a target language
+  and which imported model handles it, per article.
+- **Daily Digest.** A curated, bounded set of "enough for today" unread
+  articles, picked across your groups by weight (with a per-group coverage
+  guarantee and a per-source cap so one prolific feed can't dominate), frozen
+  once per local day. Group weights are configurable, including muting a
+  group out of the digest entirely.
+- **Global show/hide shortcut and close-to-hide.** A system-wide shortcut
+  toggles the window even while it's unfocused or hidden, and closing the
+  window hides it instead of quitting (with a separate quit shortcut) — the
+  original Electron app had neither.
+
+### Missing — present in the original, not (yet) ported
+
+- **Sync services beyond Fever.** Only the Fever protocol (and Fever-compatible
+  self-hosted servers, e.g. FreshRSS, Tiny Tiny RSS's Fever plugin) is
+  implemented. The original's native Google Reader API, Inoreader, Feedbin,
+  The Old Reader, and BazQux Reader integrations are not present.
+- **Full-content article extraction.** No Mercury-Parser-equivalent reader
+  view — articles render from their raw HTML/RSS content, no "extract full
+  page" fallback.
+- **Store distribution.** No Microsoft Store / Mac App Store packaging,
+  code-signing, or notarization. Build and run it yourself (below).
+- **Mobile companion app.** The original has a
+  [separate mobile app](https://github.com/yang991178/fluent-reader-lite);
+  this rewrite doesn't have (or plan) a mobile counterpart.
+
+### Changed behavior
+
+- **Search and auto-rules use substring matching, not regular expressions.**
+  The original's regex-based search and hide/mark-read/star rules are
+  implemented here as case-insensitive substring matches instead.
+
+### Kept
+
+OPML import/export, full data backup, folder-style subscription groups,
+read/star/hide rules, native OS notifications for rule-flagged items on
+background fetch, and the original's single-key keyboard shortcuts
+(`j`/`k`/`m`/`s`/`r`/`o`).
 
 ## Development
 
-### Contribute
-
-Help make Fluent Reader better by reporting bugs or opening feature requests through [GitHub issues](https://github.com/yang991178/fluent-reader/issues). 
-
-You can also help internationalize the app by providing [translations into additional languages](https://github.com/yang991178/fluent-reader/tree/master/src/scripts/i18n). 
-Refer to the repo of [react-intl-universal](https://github.com/alibaba/react-intl-universal) to get started on internationalization. 
-
-If you enjoy using this app, consider supporting its development by donating through [GitHub Sponsors](https://github.com/sponsors/yang991178), [Paypal](https://www.paypal.me/yang991178), or [Alipay](https://hyliu.me/fluent-reader/imgs/alipay.jpg).
-
-### Build from source
-```bash
-# Install dependencies
-npm install
-
-# Compile ts & dependencies
-npm run build
-
-# Start the application
-npm run electron
-
-# Generate certificate for signature
-electron-builder create-self-signed-cert
-# Package the app for Windows
-npm run package-win
-
-```
+| Task | Command |
+|---|---|
+| Dev | `pnpm tauri:dev` |
+| Production build | `pnpm tauri:build` |
+| Install desktop entry (Linux) | `pnpm tauri:install` |
+| Frontend tests | `pnpm test` |
+| Rust tests | `cargo test --manifest-path src-tauri/Cargo.toml` |
+| Type / build check | `pnpm build` |
 
 ### Developed with
 
-- [Electron](https://github.com/electron/electron)
+- [Tauri](https://github.com/tauri-apps/tauri) + [Rust](https://www.rust-lang.org/)
 - [React](https://github.com/facebook/react)
 - [Redux](https://github.com/reduxjs/redux)
 - [Fluent UI](https://github.com/microsoft/fluentui)
-- [Lovefield](https://github.com/google/lovefield)
-- [Mercury Parser](https://github.com/postlight/mercury-parser)
+- [SQLite](https://www.sqlite.org/) via [sqlx](https://github.com/launchbadge/sqlx)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, for local translation
 
-### License
+## License
 
-BSD
+GPL-3.0-or-later — see [LICENSE](LICENSE). Portions of this codebase are
+derived from Fluent Reader (BSD 3-Clause); see [Credits](#credits) above for
+the original notice.

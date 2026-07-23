@@ -12,8 +12,8 @@
     "format": "prettier --write ."
   },
   "keywords": [],
-  "author": "Haoyuan Liu",
-  "license": "BSD-3-Clause",
+  "author": "Cytrogen",
+  "license": "GPL-3.0-or-later",
   "sideEffects": [
     "*.css"
   ],
