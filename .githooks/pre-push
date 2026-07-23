@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Generic local-blocklist gate. Reads patterns (one per line, grep -E, blank
+# lines and #-comments skipped) from .git/push-blocklist and refuses to push
+# any ref whose outgoing commits or changed paths match one. That file lives
+# inside .git/, so it's never tracked/pushed itself — this script stays
+# content-free of whatever a given clone chooses to keep local-only.
+set -euo pipefail
+
+blocklist="$(git rev-parse --git-dir)/push-blocklist"
+[ -f "$blocklist" ] || exit 0
+
+zero="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue # a delete — nothing to check
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+
+    while IFS= read -r pattern; do
+        [ -z "$pattern" ] && continue
+        case "$pattern" in \#*) continue ;; esac
+
+        if git diff --name-only "$range" -- . 2>/dev/null | grep -qiE "$pattern"; then
+            echo "pre-push: blocked pushing $local_ref — a changed file path matched a local blocklist pattern" >&2
+            exit 1
+        fi
+        if git log -p "$range" -- . 2>/dev/null | grep -qiE "$pattern"; then
+            echo "pre-push: blocked pushing $local_ref — outgoing commit content matched a local blocklist pattern" >&2
+            exit 1
+        fi
+    done <"$blocklist"
+done
+
+exit 0
