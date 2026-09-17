@@ -4,6 +4,7 @@ import {
     ThemeSettings,
     SyncService,
     DIGEST_CONFIG_DEFAULT,
+    DigestOrder,
     TRANSLATION_CONFIG_DEFAULT,
     TranslateProvider,
     type SettingsShape,
@@ -955,6 +956,38 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
                                 <span className={styles.hint}>
                                     Max articles from any single feed, for
                                     diversity.
+                                </span>
+                            </div>
+
+                            <div className={styles.field}>
+                                <label className={styles.label}>Order</label>
+                                <select
+                                    className={styles.input}
+                                    value={
+                                        digestCfg.order ??
+                                        DIGEST_CONFIG_DEFAULT.order
+                                    }
+                                    onChange={e =>
+                                        updateDigestCfg({
+                                            order: e.target
+                                                .value as DigestOrder,
+                                        })
+                                    }>
+                                    <option value={DigestOrder.Newest}>
+                                        Newest first
+                                    </option>
+                                    <option value={DigestOrder.Oldest}>
+                                        Oldest first
+                                    </option>
+                                    <option value={DigestOrder.Random}>
+                                        Random
+                                    </option>
+                                </select>
+                                <span className={styles.hint}>
+                                    Newest surfaces today's hot topics, oldest
+                                    helps clear a backlog, random picks a
+                                    different set each time. Changes apply on
+                                    the next Regenerate.
                                 </span>
                             </div>
 

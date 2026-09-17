@@ -73,6 +73,15 @@ export interface DigestSnapshot {
   iids: number[];
 }
 
+// How the digest picks and displays articles when the candidate set exceeds
+// the budget. Newest/oldest both select and display in that date direction;
+// random shuffles (notify-flagged items still float to the front of selection).
+export const enum DigestOrder {
+  Newest = "newest",
+  Oldest = "oldest",
+  Random = "random",
+}
+
 // Tunables for the digest selection algorithm.
 export interface DigestConfig {
   // Total number of articles in the digest.
@@ -81,6 +90,8 @@ export interface DigestConfig {
   base: number;
   // Max articles from any single source (diversity cap).
   perSource: number;
+  // Selection/display order. See DigestOrder.
+  order: DigestOrder;
 }
 
 // Per-group weight for the digest (gid → weight). A missing group defaults to
@@ -114,6 +125,7 @@ export const DIGEST_CONFIG_DEFAULT: DigestConfig = {
   size: 20,
   base: 2,
   perSource: 2,
+  order: DigestOrder.Newest,
 };
 
 // Which translation backend to use. Pluggable; only the local OpenAI-compatible
