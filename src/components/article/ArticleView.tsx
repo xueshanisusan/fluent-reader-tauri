@@ -153,7 +153,7 @@ export const ArticleView = React.forwardRef<ArticleViewHandle, ArticleViewProps>
         if (srcdoc === null) {
             return (
                 <div className={styles.error}>
-                    无法显示这篇文章（内部错误）
+                    Couldn't display this article (internal error)
                 </div>
             )
         }

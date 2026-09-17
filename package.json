@@ -17,7 +17,7 @@
   "sideEffects": [
     "*.css"
   ],
-  "repository": "github:yang991178/fluent-reader",
+  "repository": "github:xueshanisusan/fluent-reader-tauri",
   "devDependencies": {
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/cli": "^2.11.0",

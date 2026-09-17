@@ -26,7 +26,7 @@ export interface UseDigest {
     items: Item[] | null
     loading: boolean
     error: string | null
-    // Total in the frozen digest and how many are still unread ("还剩 M / N").
+    // Total in the frozen digest and how many are still unread ("M of N left").
     total: number
     remaining: number
     selectedItem: Item | null
