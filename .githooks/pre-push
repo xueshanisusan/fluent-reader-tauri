@@ -10,25 +10,33 @@ blocklist="$(git rev-parse --git-dir)/push-blocklist"
 [ -f "$blocklist" ] || exit 0
 
 zero="0000000000000000000000000000000000000000"
+empty_tree="$(git hash-object -t tree /dev/null)"
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue # a delete — nothing to check
     if [ "$remote_sha" = "$zero" ]; then
-        range="$local_sha"
+        # Brand-new ref on the remote: there's nothing to diff against, so
+        # treat the whole pushed tree/history as new-to-the-remote.
+        diff_base="$empty_tree"
+        log_range="$local_sha"
     else
-        range="$remote_sha..$local_sha"
+        diff_base="$remote_sha"
+        log_range="$remote_sha..$local_sha"
     fi
 
     while IFS= read -r pattern; do
         [ -z "$pattern" ] && continue
         case "$pattern" in \#*) continue ;; esac
 
-        if git diff --name-only "$range" -- . 2>/dev/null | grep -qiE "$pattern"; then
-            echo "pre-push: blocked pushing $local_ref — a changed file path matched a local blocklist pattern" >&2
+        # Process substitution, not a pipe: grep's exit status is what
+        # `set -o pipefail` sees, so grep -q's early exit (and the SIGPIPE it
+        # sends the producer) can't get masked by the producer's own death.
+        if grep -qiE "$pattern" < <(git diff --name-only "$diff_base" "$local_sha" -- . 2>/dev/null); then
+            echo "pre-push: blocked pushing $local_ref — a changed file path matched a local blocklist pattern ($pattern)" >&2
             exit 1
         fi
-        if git log -p "$range" -- . 2>/dev/null | grep -qiE "$pattern"; then
-            echo "pre-push: blocked pushing $local_ref — outgoing commit content matched a local blocklist pattern" >&2
+        if grep -qiE "$pattern" < <(git log -p "$log_range" -- . 2>/dev/null); then
+            echo "pre-push: blocked pushing $local_ref — outgoing commit content matched a local blocklist pattern ($pattern)" >&2
             exit 1
         fi
     done <"$blocklist"
