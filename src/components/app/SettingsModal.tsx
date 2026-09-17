@@ -520,7 +520,7 @@ export function SettingsModal(props: SettingsModalProps): React.ReactElement | n
 
     return (
         <div className={styles.overlay} onClick={onClose}>
-            <div className={styles.drawer} onClick={e => e.stopPropagation()} role="dialog" aria-label="Settings">
+            <div className={styles.dialog} onClick={e => e.stopPropagation()} role="dialog" aria-label="Settings">
                 <div className={styles.header}>
                     <span className={styles.title}>Settings</span>
                     <button
