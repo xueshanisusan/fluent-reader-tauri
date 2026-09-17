@@ -67,7 +67,7 @@ layer were replaced with a Tauri + Rust backend (SQLite instead of
 Lovefield), and the sync layer was narrowed while a new AI translation layer
 was added.
 
-### New — not in the original
+### New
 
 - **On-device AI translation.** Auto-downloads a matching `llama-server`
   runtime for your OS/arch and runs a local, OpenAI-compatible chat endpoint.
@@ -82,17 +82,16 @@ was added.
   group out of the digest entirely.
 - **Global show/hide shortcut and close-to-hide.** A system-wide shortcut
   toggles the window even while it's unfocused or hidden, and closing the
-  window hides it instead of quitting (with a separate quit shortcut) — the
-  original Electron app had neither.
+  window hides it instead of quitting (with a separate quit shortcut).
 
-### Missing — present in the original, not (yet) ported
+### Missing
 
 - **Sync services beyond Fever.** Only the Fever protocol (and Fever-compatible
   self-hosted servers, e.g. FreshRSS, Tiny Tiny RSS's Fever plugin) is
   implemented. The original's native Google Reader API, Inoreader, Feedbin,
   The Old Reader, and BazQux Reader integrations are not present.
 - **Full-content article extraction.** No Mercury-Parser-equivalent reader
-  view — articles render from their raw HTML/RSS content, no "extract full
+  view. Articles render from their raw HTML/RSS content, no "extract full
   page" fallback.
 - **Store distribution.** No Microsoft Store / Mac App Store packaging,
   code-signing, or notarization. Build and run it yourself (below).
@@ -128,13 +127,20 @@ background fetch, and the original's single-key keyboard shortcuts
 
 - [Tauri](https://github.com/tauri-apps/tauri) + [Rust](https://www.rust-lang.org/)
 - [React](https://github.com/facebook/react)
-- [Redux](https://github.com/reduxjs/redux)
-- [Fluent UI](https://github.com/microsoft/fluentui)
 - [SQLite](https://www.sqlite.org/) via [sqlx](https://github.com/launchbadge/sqlx)
 - [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, for local translation
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE). Portions of this codebase are
+GPL-3.0-or-later - see [LICENSE](LICENSE). Portions of this codebase are
 derived from Fluent Reader (BSD 3-Clause); see [Credits](#credits) above for
 the original notice.
+
+I wrote most of the code here with heavy AI assistance, directing and
+revising it myself. US copyright law treats only fully autonomous AI output
+as unauthored and already public domain. Work directed by a human doesn't
+qualify no matter how much of the typing an AI did. GPL is the license that
+gets closest to what I want here, because this code should stay everyone's
+permanently. Projects using this code should also stay everyone's.
+Public-domain dedication, however, would let someone fork this, close the
+source, and resell it.
