@@ -57,12 +57,39 @@ async fn post_api(
             Ok(resp) => {
                 // reqwest is built without the `json` feature (see net.rs), so
                 // read text and parse with serde_json directly.
+                let status = resp.status();
                 let text = resp
                     .text()
                     .await
                     .map_err(|e| SyncError::Network { message: e.to_string() })?;
-                return serde_json::from_str(&text)
-                    .map_err(|e| SyncError::Parse { message: e.to_string() });
+                if !status.is_success() {
+                    // Many servers answer a wrong endpoint/bad credentials with an
+                    // empty (or HTML) body, which otherwise surfaces as an opaque
+                    // "EOF while parsing a value" from serde_json below.
+                    return Err(SyncError::Network {
+                        message: format!(
+                            "server returned HTTP {status} for {url}{}",
+                            if text.trim().is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {}", text.trim().chars().take(200).collect::<String>())
+                            }
+                        ),
+                    });
+                }
+                if text.trim().is_empty() {
+                    return Err(SyncError::Parse {
+                        message: format!(
+                            "server returned an empty response body for {url} (check the endpoint URL)"
+                        ),
+                    });
+                }
+                return serde_json::from_str(&text).map_err(|e| SyncError::Parse {
+                    message: format!(
+                        "{e} (response: {})",
+                        text.trim().chars().take(200).collect::<String>()
+                    ),
+                });
             }
             Err(e) => {
                 last_err = Some(e.to_string());
